@@ -1,0 +1,52 @@
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.Socket;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class RedisServerIntegrationTest {
+
+  private static RedisServer server;
+
+  @BeforeAll
+  static void startServer() throws IOException {
+    // Random free port, never the application default (6379)
+    server = RedisServer.onRandomPort();
+    server.start();
+  }
+
+  @AfterAll
+  static void stopServer() throws IOException {
+    if (server != null) {
+      server.close();
+    }
+  }
+
+  @Test
+  void respondsWithPongToPing() throws IOException {
+    String response = sendCommand("PING");
+
+    assertEquals("+PONG", response);
+  }
+
+  @Test
+  void handlesMultipleSequentialConnections() throws IOException {
+    for (int i = 0; i < 3; i++) {
+      assertEquals("+PONG", sendCommand("PING"));
+    }
+  }
+
+  private String sendCommand(String command) throws IOException {
+    try (var socket = new Socket("localhost", server.getPort());
+         var in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+      socket.getOutputStream().write((command + "\r\n").getBytes());
+      socket.getOutputStream().flush();
+      return in.readLine();
+    }
+  }
+}
