@@ -53,7 +53,9 @@ public final class RedisServer implements AutoCloseable {
         while (running) {
             try {
                 var clientSocket = serverSocket.accept();
-                handleClient(clientSocket);
+                Thread.ofVirtual().start(() -> {
+                    handleClient(clientSocket);
+                });
             } catch (IOException e) {
                 if (running) {
                     logger.severe("IOException: " + e.getMessage());
