@@ -3,6 +3,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Objects;
 
 public final class RedisServer implements AutoCloseable {
   private final int requestedPort;
@@ -63,11 +64,9 @@ public final class RedisServer implements AutoCloseable {
   }
 
   private void handleClient(Socket clientSocket) {
-    try (clientSocket;
-         var in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()))) {
-      var line = in.readLine();
-      Logger.info("Read: " + line);
-      clientSocket.getOutputStream().write("+PONG\r\n".getBytes());
+    try (clientSocket;) {
+      var dispatcher = new Dispatcher(clientSocket.getInputStream(), clientSocket.getOutputStream());
+      dispatcher.process();
     } catch (IOException e) {
       Logger.error("IOException: " + e.getMessage());
     }

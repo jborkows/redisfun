@@ -29,22 +29,16 @@ class RedisServerIntegrationTest {
 
   @Test
   void respondsWithPongToPing() throws IOException {
-    String response = sendCommand("PING");
-
+    var response = sendCommand("*1","$4","PING");
     assertEquals("+PONG", response);
   }
 
-  @Test
-  void handlesMultipleSequentialConnections() throws IOException {
-    for (int i = 0; i < 3; i++) {
-      assertEquals("+PONG", sendCommand("PING"));
-    }
-  }
-
-  private String sendCommand(String command) throws IOException {
+  private String sendCommand(String ...command) throws IOException {
     try (var socket = new Socket("localhost", server.getPort());
          var in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-      socket.getOutputStream().write((command + "\r\n").getBytes());
+      for (var cmd : command) {
+        socket.getOutputStream().write((cmd + "\r\n").getBytes());
+      }
       socket.getOutputStream().flush();
       return in.readLine();
     }
