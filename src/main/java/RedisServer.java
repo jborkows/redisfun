@@ -4,8 +4,11 @@ import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Objects;
+import java.util.logging.Logger;
 
 public final class RedisServer implements AutoCloseable {
+  private static final Logger logger = Logger.getLogger(RedisServer.class.getName());
+
   private final int requestedPort;
   private ServerSocket serverSocket;
   private Thread acceptThread;
@@ -56,7 +59,7 @@ public final class RedisServer implements AutoCloseable {
         handleClient(clientSocket);
       } catch (IOException e) {
         if (running) {
-          Logger.error("IOException: " + e.getMessage());
+          logger.severe("IOException: " + e.getMessage());
         }
         // otherwise: socket closed by close(), shutting down
       }
@@ -68,7 +71,7 @@ public final class RedisServer implements AutoCloseable {
       var dispatcher = new Dispatcher(clientSocket.getInputStream(), clientSocket.getOutputStream());
       dispatcher.process();
     } catch (IOException e) {
-      Logger.error("IOException: " + e.getMessage());
+      logger.severe("IOException: " + e.getMessage());
     }
   }
 

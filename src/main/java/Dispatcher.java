@@ -1,8 +1,11 @@
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.logging.Logger;
 
 class Dispatcher{
+        private static final Logger logger = Logger.getLogger(Dispatcher.class.getName());
+
         private final InputStream inputStream;
         private final OutputStream outputStream;
 
@@ -15,7 +18,8 @@ class Dispatcher{
         var buffer = new byte[1024];
         int bytesRead;
         while ((bytesRead = inputStream.read(buffer)) != -1) {
-            Logger.info("Received: " + new String(buffer, 0, bytesRead));
+            final int received = bytesRead; // final copy: lambdas can't capture a reassigned variable
+            logger.fine(() -> "Received: " + new String(buffer, 0, received));
             writeOutput("+PONG");
         }
     }
