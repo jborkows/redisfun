@@ -6,7 +6,7 @@ import java.util.logging.Logger;
 
 public final class RedisServer implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(RedisServer.class.getName());
-
+    private static final String SEPARATOR = "\r\n";
     private final int requestedPort;
     private ServerSocket serverSocket;
     private Thread acceptThread;
@@ -76,7 +76,7 @@ public final class RedisServer implements AutoCloseable {
                 for (var effect : effects) {
                     switch (effect) {
                         case PrintText printText ->
-                                clientSocket.getOutputStream().write((printText.text() + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                                clientSocket.getOutputStream().write((printText.text() + SEPARATOR).getBytes(StandardCharsets.ISO_8859_1));
                     }
                 }
             }
