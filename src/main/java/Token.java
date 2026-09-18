@@ -31,14 +31,15 @@ record InvalidToken(byte[] bytes) implements Token {
 
 class Lexer {
 
-    private enum Mode {
-        LINE, RAW, AWAIT_CARRIAGE_RETURN, AWAIT_LINE_FEED
+    private sealed interface LexerState {
+        LexerStep onByte(byte b);
+    }
+
+    private record LexerStep(LexerState next, TokenState result) {
     }
 
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-    private Mode mode = Mode.LINE;
-    private boolean expectBulkLength = false;
-    private int rawRemaining = -1;
+    private LexerState state = new Line();
 
     private static boolean isDigits(String line) {
         if (line.isEmpty()) {
@@ -53,100 +54,112 @@ class Lexer {
     }
 
     TokenResult onByte(byte b) {
-        return switch (mode) {
-            case RAW -> onRawByte(b);
-            case AWAIT_CARRIAGE_RETURN -> onAwaitCarriageReturn(b);
-            case AWAIT_LINE_FEED -> onAwaitLineFeed(b);
-            case LINE -> onLineByte(b);
-        };
+        var step = state.onByte(b);
+        state = step.next();
+        return new TokenResult(this, step.result());
     }
 
-    private TokenResult onRawByte(byte b) {
-        buffer.write(b);
-        rawRemaining--;
-        if (rawRemaining == 0) {
-            mode = Mode.AWAIT_CARRIAGE_RETURN;
-        }
-        return notReady();
+    private LexerStep step(LexerState next, TokenState result) {
+        return new LexerStep(next, result);
     }
 
-    private TokenResult onAwaitCarriageReturn(byte b) {
-        if (b == '\r') {
-            mode = Mode.AWAIT_LINE_FEED;
-            return notReady();
-        }
-        return invalidRaw();
-    }
-
-    private TokenResult onAwaitLineFeed(byte b) {
-        if (b == '\n') {
-            var content = buffer.toString(StandardCharsets.ISO_8859_1);
-            buffer.reset();
-            mode = Mode.LINE;
-            return ready(new Text(content));
-        }
-        return invalidRaw();
-    }
-
-    private TokenResult invalidRaw() {
+    private LexerStep invalidRaw() {
         var content = buffer.toByteArray();
         buffer.reset();
-        rawRemaining = -1;
-        mode = Mode.LINE;
-        return ready(new InvalidToken(content));
+        return step(new Line(), new TokenState.Ready(new InvalidToken(content)));
     }
 
-    private TokenResult onLineByte(byte b) {
-        if (b == '\n') {
-            return ready(finishLine());
-        }
-        if (buffer.size() == 0 && b == '*') {
-            return ready(new Star());
-        }
-        if (buffer.size() == 0 && b == '$') {
-            expectBulkLength = true;
-            return ready(new Dollar());
-        }
-        buffer.write(b);
-        return notReady();
-    }
-
-    private Token finishLine() {
+    private LexerStep finishLine(boolean expectBulkLength) {
         var bytes = buffer.toByteArray();
         buffer.reset();
         var last = bytes.length - 1;
         if (last < 0 || bytes[last] != '\r') {
-            expectBulkLength = false;
-            return new InvalidToken(bytes);
+            return step(new Line(), new TokenState.Ready(new InvalidToken(bytes)));
         }
         var line = new String(bytes, 0, last, StandardCharsets.US_ASCII);
         if (!isDigits(line)) {
             if (expectBulkLength) {
-                expectBulkLength = false;
-                return new InvalidToken(bytes);
+                return step(new Line(), new TokenState.Ready(new InvalidToken(bytes)));
             }
-            return new Text(line);
+            return step(new Line(), new TokenState.Ready(new Text(line)));
         }
         try {
             var value = Integer.parseInt(line);
             if (expectBulkLength) {
-                expectBulkLength = false;
-                rawRemaining = value;
-                mode = value == 0 ? Mode.AWAIT_CARRIAGE_RETURN : Mode.RAW;
+                LexerState next = value == 0 ? new AwaitingCarriageReturn() : new Raw(value);
+                return step(next, new TokenState.Ready(new Length(value)));
             }
-            return new Length(value);
+            return step(new Line(), new TokenState.Ready(new Length(value)));
         } catch (NumberFormatException e) {
-            expectBulkLength = false;
-            return new InvalidToken(bytes);
+            return step(new Line(), new TokenState.Ready(new InvalidToken(bytes)));
         }
     }
 
-    private TokenResult ready(Token token) {
-        return new TokenResult(this, new TokenState.Ready(token));
+    private final class Line implements LexerState {
+        private final boolean expectBulkLength;
+
+        Line() {
+            this(false);
+        }
+
+        Line(boolean expectBulkLength) {
+            this.expectBulkLength = expectBulkLength;
+        }
+
+        @Override
+        public LexerStep onByte(byte b) {
+            if (b == '\n') {
+                return finishLine(expectBulkLength);
+            }
+            if (buffer.size() == 0 && b == '*') {
+                return step(this, new TokenState.Ready(new Star()));
+            }
+            if (buffer.size() == 0 && b == '$') {
+                return step(new Line(true), new TokenState.Ready(new Dollar()));
+            }
+            buffer.write(b);
+            return step(this, TokenState.NOT_READY);
+        }
     }
 
-    private TokenResult notReady() {
-        return new TokenResult(this, TokenState.NOT_READY);
+    private final class Raw implements LexerState {
+        private final int remaining;
+
+        Raw(int remaining) {
+            this.remaining = remaining;
+        }
+
+        @Override
+        public LexerStep onByte(byte b) {
+            buffer.write(b);
+            var next = remaining - 1;
+            if (next == 0) {
+                return step(new AwaitingCarriageReturn(), TokenState.NOT_READY);
+            }
+            return step(new Raw(next), TokenState.NOT_READY);
+        }
+    }
+
+    private final class AwaitingCarriageReturn implements LexerState {
+        @Override
+        public LexerStep onByte(byte b) {
+            if (b == '\r') {
+                return step(new AwaitingLineFeed(), TokenState.NOT_READY);
+            }
+            return invalidRaw();
+        }
+    }
+
+    private final class AwaitingLineFeed implements LexerState {
+        @Override
+        public LexerStep onByte(byte b) {
+            if (b == '\n') {
+                var content = buffer.toString(StandardCharsets.ISO_8859_1);
+                buffer.reset();
+                return step(new Line(), new TokenState.Ready(new Text(content)));
+            }
+            return invalidRaw();
+        }
     }
 }
 
