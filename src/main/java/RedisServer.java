@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
 
 public final class RedisServer implements AutoCloseable {
@@ -75,7 +76,7 @@ public final class RedisServer implements AutoCloseable {
                 for (var effect : effects) {
                     switch (effect) {
                         case PrintText printText ->
-                                clientSocket.getOutputStream().write((printText.text() + "\r\n").getBytes());
+                                clientSocket.getOutputStream().write((printText.text() + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
                     }
                 }
             }

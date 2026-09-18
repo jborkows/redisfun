@@ -31,7 +31,14 @@ record InvalidToken(byte[] bytes) implements Token {
 
 class Lexer {
 
+    private enum Mode {
+        LINE, RAW, AWAIT_CARRIAGE_RETURN, AWAIT_LINE_FEED
+    }
+
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    private Mode mode = Mode.LINE;
+    private boolean expectBulkLength = false;
+    private int rawRemaining = -1;
 
     private static boolean isDigits(String line) {
         if (line.isEmpty()) {
@@ -46,6 +53,50 @@ class Lexer {
     }
 
     TokenResult onByte(byte b) {
+        return switch (mode) {
+            case RAW -> onRawByte(b);
+            case AWAIT_CARRIAGE_RETURN -> onAwaitCarriageReturn(b);
+            case AWAIT_LINE_FEED -> onAwaitLineFeed(b);
+            case LINE -> onLineByte(b);
+        };
+    }
+
+    private TokenResult onRawByte(byte b) {
+        buffer.write(b);
+        rawRemaining--;
+        if (rawRemaining == 0) {
+            mode = Mode.AWAIT_CARRIAGE_RETURN;
+        }
+        return notReady();
+    }
+
+    private TokenResult onAwaitCarriageReturn(byte b) {
+        if (b == '\r') {
+            mode = Mode.AWAIT_LINE_FEED;
+            return notReady();
+        }
+        return invalidRaw();
+    }
+
+    private TokenResult onAwaitLineFeed(byte b) {
+        if (b == '\n') {
+            var content = buffer.toByteArray();
+            buffer.reset();
+            mode = Mode.LINE;
+            return ready(new Text(new String(content, StandardCharsets.ISO_8859_1)));
+        }
+        return invalidRaw();
+    }
+
+    private TokenResult invalidRaw() {
+        var content = buffer.toByteArray();
+        buffer.reset();
+        rawRemaining = -1;
+        mode = Mode.LINE;
+        return ready(new InvalidToken(content));
+    }
+
+    private TokenResult onLineByte(byte b) {
         if (b == '\n') {
             return ready(finishLine());
         }
@@ -53,6 +104,7 @@ class Lexer {
             return ready(new Star());
         }
         if (buffer.size() == 0 && b == '$') {
+            expectBulkLength = true;
             return ready(new Dollar());
         }
         buffer.write(b);
@@ -64,15 +116,27 @@ class Lexer {
         buffer.reset();
         var last = bytes.length - 1;
         if (last < 0 || bytes[last] != '\r') {
+            expectBulkLength = false;
             return new InvalidToken(bytes);
         }
         var line = new String(bytes, 0, last, StandardCharsets.US_ASCII);
         if (!isDigits(line)) {
+            if (expectBulkLength) {
+                expectBulkLength = false;
+                return new InvalidToken(bytes);
+            }
             return new Text(line);
         }
         try {
-            return new Length(Integer.parseInt(line));
+            var value = Integer.parseInt(line);
+            if (expectBulkLength) {
+                expectBulkLength = false;
+                rawRemaining = value;
+                mode = value == 0 ? Mode.AWAIT_CARRIAGE_RETURN : Mode.RAW;
+            }
+            return new Length(value);
         } catch (NumberFormatException e) {
+            expectBulkLength = false;
             return new InvalidToken(bytes);
         }
     }

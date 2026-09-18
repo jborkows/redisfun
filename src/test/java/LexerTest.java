@@ -86,6 +86,51 @@ class LexerTest {
         assertInstanceOf(Star.class, tokens.get(1));
     }
 
+    @Test
+    void lexesValueStartingWithStar() {
+        var tokens = tokenize("$4\r\n*foo\r\n");
+        assertEquals(3, tokens.size());
+        assertInstanceOf(Dollar.class, tokens.get(0));
+        assertEquals(new Length(4), tokens.get(1));
+        assertEquals(new Text("*foo"), tokens.get(2));
+    }
+
+    @Test
+    void lexesValueStartingWithDollar() {
+        var tokens = tokenize("$5\r\n$XXXX\r\n");
+        assertEquals(3, tokens.size());
+        assertInstanceOf(Dollar.class, tokens.get(0));
+        assertEquals(new Length(5), tokens.get(1));
+        assertEquals(new Text("$XXXX"), tokens.get(2));
+    }
+
+    @Test
+    void lexesCarriageReturnLineFeedInsideBulkContent() {
+        var tokens = tokenize("$4\r\na\r\nb\r\n");
+        assertEquals(3, tokens.size());
+        assertInstanceOf(Dollar.class, tokens.get(0));
+        assertEquals(new Length(4), tokens.get(1));
+        assertEquals(new Text("a\r\nb"), tokens.get(2));
+    }
+
+    @Test
+    void lexesEmptyBulkString() {
+        var tokens = tokenize("$0\r\n\r\n");
+        assertEquals(3, tokens.size());
+        assertInstanceOf(Dollar.class, tokens.get(0));
+        assertEquals(new Length(0), tokens.get(1));
+        assertEquals(new Text(""), tokens.get(2));
+    }
+
+    @Test
+    void rejectsBulkContentNotFollowedByCrlf() {
+        var tokens = tokenize("$1\r\nHA");
+        assertEquals(3, tokens.size());
+        assertInstanceOf(Dollar.class, tokens.get(0));
+        assertEquals(new Length(1), tokens.get(1));
+        assertInstanceOf(InvalidToken.class, tokens.get(2));
+    }
+
     private Token tokenizeOne(String input) {
         var tokens = tokenize(input);
         assertEquals(1, tokens.size(), () -> "Expected exactly one token but got: " + tokens);

@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.*;
@@ -45,6 +46,36 @@ class RedisServerIntegrationTest {
     }
 
     @Test
+    void echoesValuesStartingWithStar() throws IOException {
+        var response = sendCommand("*2", "$4", "ECHO", "$4", "*foo");
+        assertEquals(List.of("$4", "*foo"), response);
+    }
+
+    @Test
+    void echoesValuesStartingWithDollar() throws IOException {
+        var response = sendCommand("*2", "$4", "ECHO", "$5", "$XXXX");
+        assertEquals(List.of("$5", "$XXXX"), response);
+    }
+
+    @Test
+    void echoesEmptyValue() throws IOException {
+        var response = sendCommand("*2", "$4", "ECHO", "$0", "");
+        assertEquals(List.of("$0", ""), response);
+    }
+
+    @Test
+    void echoWithoutArgumentsRespondsWithError() throws IOException {
+        var response = sendCommand("*1", "$4", "ECHO");
+        assertEquals(List.of("-ERR wrong number of arguments for 'echo' command"), response);
+    }
+
+    @Test
+    void echoesHighByteValuesByteForByte() throws IOException {
+        var response = sendCommand("*2", "$4", "ECHO", "$1", "é");
+        assertEquals(List.of("$1", "é"), response);
+    }
+
+    @Test
     void respondsWithPongToPingForMultipleCalls() throws ExecutionException, InterruptedException {
         try (var executors = Executors.newFixedThreadPool(2)) {
             CompletionService<List<String>> completionService = new ExecutorCompletionService<>(executors);
@@ -69,7 +100,7 @@ class RedisServerIntegrationTest {
             // instead of freezing it (readLine() can never be unblocked otherwise).
             socket.setSoTimeout(300);
             for (var cmd : command) {
-                socket.getOutputStream().write((cmd + "\r\n").getBytes());
+                socket.getOutputStream().write((cmd + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
             }
             socket.getOutputStream().flush();
 
@@ -88,11 +119,17 @@ class RedisServerIntegrationTest {
                 // server stopped sending; evaluate what has been received
             }
 
-            var text = response.toString(StandardCharsets.UTF_8);
+            var text = response.toString(StandardCharsets.ISO_8859_1);
             if (text.isEmpty()) {
                 return List.of();
             }
-            return Arrays.asList(text.split("\r\n"));
+            var lines = new ArrayList<>(Arrays.asList(text.split("\r\n", -1)));
+            // The response always ends with CRLF, which leaves one trailing
+            // empty element behind; drop only that one.
+            if (!lines.isEmpty() && lines.getLast().isEmpty()) {
+                lines.removeLast();
+            }
+            return lines;
         }
     }
 }

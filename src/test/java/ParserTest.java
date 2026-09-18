@@ -55,9 +55,16 @@ class ParserTest {
 
     @Test
     void rejectsMismatchedBulkLength() {
-        var result = parseAll("*1\r\n$5\r\nHA\r\n");
+        var result = parseAll("*1\r\n$1\r\nHA");
         assertTrue(result.commands().isEmpty());
         assertEquals(1, result.invalid().size());
+    }
+
+    @Test
+    void bulkLongerThanContentIsTreatedAsIncomplete() {
+        var result = parseAll("*1\r\n$5\r\nHA\r\n");
+        assertTrue(result.commands().isEmpty());
+        assertTrue(result.invalid().isEmpty());
     }
 
     @Test
@@ -73,6 +80,22 @@ class ParserTest {
         assertEquals(1, result.invalid().size());
         assertEquals(1, result.commands().size());
         assertEquals("HA", result.commands().getFirst().name());
+    }
+
+    @Test
+    void acceptsEchoOfValueStartingWithStar() {
+        var commands = parse("*2\r\n$4\r\nECHO\r\n$4\r\n*foo\r\n");
+        assertEquals(1, commands.size());
+        assertEquals("ECHO", commands.getFirst().name());
+        assertEquals(List.of("*foo"), commands.getFirst().args());
+    }
+
+    @Test
+    void acceptsEchoOfValueStartingWithDollar() {
+        var commands = parse("*2\r\n$4\r\nECHO\r\n$5\r\n$XXXX\r\n");
+        assertEquals(1, commands.size());
+        assertEquals("ECHO", commands.getFirst().name());
+        assertEquals(List.of("$XXXX"), commands.getFirst().args());
     }
 
     private List<Command> parse(String input) {

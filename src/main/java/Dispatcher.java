@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -9,18 +10,35 @@ class Dispatcher {
 
     List<Effect> process(byte[] input, int read) {
         logger.fine(() -> "Received: " + new String(input, 0, read));
-        var effects = new ArrayList<Effect>();
+        var tokens = extractTokens(input, read);
+        var commands = parseTokens(tokens);
+        return commands.stream()
+                .map(Interpreter::interpret)
+                .flatMap(Collection::stream)
+                .toList();
+    }
+
+    private List<Command> parseTokens(List<Token> tokens) {
+        var commands = new ArrayList<Command>();
+        for (var token : tokens) {
+            var parsingResult = parser.on(token);
+            if (parsingResult.state() instanceof CommandState.Ready(Command command)) {
+                commands.add(command);
+            }
+            parser = parsingResult.parser();
+        }
+        return List.copyOf(commands);
+    }
+
+    private List<Token> extractTokens(byte[] input, int read) {
+        var tokens = new ArrayList<Token>();
         for (int index = 0; index < read; index++) {
             var tokenizerResponse = lexer.onByte(input[index]);
             if (tokenizerResponse.state() instanceof TokenState.Ready ready) {
-                var parsingResult = parser.on(ready.token());
-                if (parsingResult.state() instanceof CommandState.Ready readyCommand) {
-                    effects.addAll(Interpreter.interpret(readyCommand.command()));
-                }
+                tokens.add(ready.token());
             }
             lexer = tokenizerResponse.lexer();
         }
-
-        return List.copyOf(effects);
+        return tokens;
     }
 }
