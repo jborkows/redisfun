@@ -80,10 +80,10 @@ class Lexer {
 
     private TokenResult onAwaitLineFeed(byte b) {
         if (b == '\n') {
-            var content = buffer.toByteArray();
+            var content = buffer.toString(StandardCharsets.ISO_8859_1);
             buffer.reset();
             mode = Mode.LINE;
-            return ready(new Text(new String(content, StandardCharsets.ISO_8859_1)));
+            return ready(new Text(content));
         }
         return invalidRaw();
     }
