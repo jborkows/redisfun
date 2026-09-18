@@ -43,6 +43,20 @@ final class SharedRedisServer {
         }
     }
 
+    static List<String> run(String command) throws IOException {
+        return cli(command.split(" ", -1));
+    }
+
+    static List<String> cli(String... command) throws IOException {
+        var commandToSend = new ArrayList<String>();
+        commandToSend.add("*" + command.length);
+        for (var commandLine : command) {
+            commandToSend.add("$" + commandLine.length());
+            commandToSend.add(commandLine);
+        }
+        return sendCommand(commandToSend.toArray(new String[0]));
+    }
+
     static List<String> sendCommand(String... command) throws IOException {
         try (var socket = new Socket("localhost", port())) {
             // Bound the blocking read so a short/incomplete response fails the test
