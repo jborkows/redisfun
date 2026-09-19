@@ -41,4 +41,40 @@ class InterpreterTest {
         var effects = Interpreter.interpret(new Command("ECHO", List.of("a", "b")));
         assertEquals(List.of(new PrintText("-ERR wrong number of arguments for 'echo' command")), effects);
     }
+
+    @Test
+    void respondsWithErrorForGetWithoutArguments() {
+        var effects = Interpreter.interpret(new Command("GET", List.of()));
+        assertEquals(List.of(new PrintText("-ERR wrong number of arguments for 'get' command")), effects);
+    }
+
+    @Test
+    void respondsWithErrorForGetWithTooManyArguments() {
+        var effects = Interpreter.interpret(new Command("GET", List.of("a", "b")));
+        assertEquals(List.of(new PrintText("-ERR wrong number of arguments for 'get' command")), effects);
+    }
+
+    @Test
+    void respondsWithErrorForSetWithMissingValue() {
+        var effects = Interpreter.interpret(new Command("SET", List.of("a")));
+        assertEquals(List.of(new PrintText("-ERR wrong number of arguments for 'set' command")), effects);
+    }
+
+    @Test
+    void acceptsSetWithExpiryOption() {
+        var effects = Interpreter.interpret(new Command("SET", List.of("a", "b", "PX", "5000")));
+        assertEquals(List.of(new PrintText("+OK")), effects);
+    }
+
+    @Test
+    void respondsWithSyntaxErrorForSetExpiryWithoutTime() {
+        var effects = Interpreter.interpret(new Command("SET", List.of("a", "b", "PX")));
+        assertEquals(List.of(new PrintText("-ERR syntax error")), effects);
+    }
+
+    @Test
+    void respondsWithSyntaxErrorForSetWithBothExAndPx() {
+        var effects = Interpreter.interpret(new Command("SET", List.of("a", "b", "EX", "5", "PX", "5000")));
+        assertEquals(List.of(new PrintText("-ERR syntax error")), effects);
+    }
 }
