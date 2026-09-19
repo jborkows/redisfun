@@ -27,22 +27,22 @@ class RedisServerGetSetIntegrationTest {
 
     @Test
     void setKeyAndFetchWithExpire() throws IOException, InterruptedException {
-        var response = SharedRedisServer.run("SET C X EX 5");
+        var response = SharedRedisServer.run("SET C X EX 2");
         assertEquals(List.of("+OK"), response);
         response = SharedRedisServer.run("GET C");
         assertEquals(List.of("$1", "X"), response);
-        TimeUnit.SECONDS.sleep(5);
+        TimeUnit.SECONDS.sleep(2);
         response = SharedRedisServer.run("GET C");
         assertEquals(List.of("$-1"), response);
     }
 
     @Test
     void setKeyAndFetchWithExpireMiliseconds() throws IOException, InterruptedException {
-        var response = SharedRedisServer.run("SET D Z PX 5000");
+        var response = SharedRedisServer.run("SET D Z PX 2000");
         assertEquals(List.of("+OK"), response);
         response = SharedRedisServer.run("GET D");
         assertEquals(List.of("$1", "Z"), response);
-        TimeUnit.SECONDS.sleep(5);
+        TimeUnit.SECONDS.sleep(2);
         response = SharedRedisServer.run("GET D");
         assertEquals(List.of("$-1"), response);
     }
