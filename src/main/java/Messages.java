@@ -25,6 +25,10 @@ final class Messages {
         return List.of(new PrintText("-ERR " + message));
     }
 
+    static List<Effect> wrongType(String message) {
+        return List.of(new PrintText("-WRONGTYPE " + message));
+    }
+
     static List<Effect> wrongNumberOfArguments(String commandName) {
         return errorMessage("wrong number of arguments for '" + commandName + "' command");
     }

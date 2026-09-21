@@ -21,9 +21,11 @@ class Interpreter {
     private static List<Effect> parseException(String commandName, StorageException storageException) {
         return switch (storageException) {
             case OperationAllowedOnlyForLists _ ->
-                    Messages.errorMessage("Operation %s allowed only for lists".formatted(commandName));
+                    Messages.wrongType("Operation %s allowed only for lists".formatted(commandName));
             case OperationAllowedOnlyForSingleElement _ ->
-                    Messages.errorMessage("Operation %s allowed only for single element".formatted(commandName));
+                    Messages.wrongType("Operation %s allowed only for single element".formatted(commandName));
+            case CannotModifyType cannotModifyType ->
+                    Messages.wrongType("Operation %s cannot change type from %s".formatted(commandName, cannotModifyType.existingType));
         };
     }
 
@@ -35,7 +37,7 @@ class Interpreter {
         if (found == null) {
             return List.of(Messages.nilMessage());
         } else {
-            return Messages.bulkMessage(found.toString());
+            return Messages.bulkMessage(found);
         }
     }
 

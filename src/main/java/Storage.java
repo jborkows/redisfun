@@ -45,16 +45,29 @@ final class Storage {
         };
     }
 
-    void put(@NonNull String key, String value) {
-        db.put(key, new Eternal(new StringValue(value)));
+    void put(@NonNull String key, String value) throws StorageException {
+        insert(key, new Eternal(new StringValue(value)));
     }
 
-    void putExpirable(String key, String value, @NonNull Duration duration) {
+    void putExpirable(String key, String value, @NonNull Duration duration) throws StorageException {
         var future = System.currentTimeMillis() + duration.toMillis();
-        db.put(key, new ExpiredAt(new StringValue(value), future));
+        insert(key, new ExpiredAt(new StringValue(value), future));
     }
 
-    void addElement(String key, String value) {
+    private void insert(@NonNull String key, @NonNull DataPersistency data) throws StorageException {
+        db.compute(key, (k, v) -> {
+            if (v == null) {
+                return data;
+            }
+            var value = extractFrom(v);
+            return switch (value) {
+                case ListValue _ -> throw CannotModifyType.cannotModifyFromList();
+                case StringValue _ -> data;
+            };
+        });
+    }
+
+    void addElement(@NonNull String key, @NonNull String value) {
         db.compute(key, (k, v) -> {
             if (v == null) {
                 return createNewList(value);
@@ -64,7 +77,7 @@ final class Storage {
                     listValue.value().add(value);
                     yield v;
                 }
-                case StringValue _ -> createNewList(value);
+                case StringValue _ -> throw CannotModifyType.cannotModifyFromElement();
             };
         });
     }
@@ -98,6 +111,23 @@ final class OperationAllowedOnlyForSingleElement extends StorageException {
 }
 
 final class OperationAllowedOnlyForLists extends StorageException {
+
+}
+
+final class CannotModifyType extends StorageException {
+    final String existingType;
+
+    CannotModifyType(String existingType) {
+        this.existingType = existingType;
+    }
+
+    static CannotModifyType cannotModifyFromElement() {
+        return new CannotModifyType("Element");
+    }
+
+    static CannotModifyType cannotModifyFromList() {
+        return new CannotModifyType("List");
+    }
 
 }
 
