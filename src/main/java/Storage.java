@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 sealed interface DataPersistency {
 
@@ -67,19 +68,23 @@ final class Storage {
         });
     }
 
-    void addElement(@NonNull String key, @NonNull List<String> values) {
+    int addElement(@NonNull String key, @NonNull List<String> values) {
+        var wrapper = new AtomicInteger(0);
         db.compute(key, (k, v) -> {
             if (v == null) {
+                wrapper.set(values.size());
                 return new Eternal(new ListValue(new ArrayList<>(values)));
             }
             return switch (extractFrom(v)) {
                 case ListValue listValue -> {
                     listValue.value().addAll(values);
+                    wrapper.set(listValue.value().size());
                     yield v;
                 }
                 case StringValue _ -> throw CannotModifyType.cannotModifyFromElement();
             };
         });
+        return wrapper.get();
     }
 
     int count(String key) throws OperationAllowedOnlyForLists {

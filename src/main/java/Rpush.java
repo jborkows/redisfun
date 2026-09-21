@@ -6,9 +6,8 @@ public class Rpush {
         if (args.size() < 2) {
             return Messages.wrongNumberOfArguments("rpush");
         }
-        var key = args.get(0);
-        Storage.STORAGE.addElement(key, args.subList(1, args.size()));
-        var count = Storage.STORAGE.count(key);
+        var key = args.getFirst();
+        var count = Storage.STORAGE.addElement(key, args.subList(1, args.size()));
         return List.of(Messages.respInteger(count));
     }
 }
