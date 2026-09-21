@@ -1,6 +1,8 @@
 import java.util.List;
 
-public class Rpush {
+final class Rpush {
+    private Rpush() {
+    }
 
     static List<Effect> execute(List<String> args) {
         if (args.size() < 2) {

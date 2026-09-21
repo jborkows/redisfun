@@ -11,6 +11,7 @@ class Interpreter {
                 case "GET" -> getCommand(command.args());
                 case "SET" -> SetCommand.execute(command.args());
                 case "RPUSH" -> Rpush.execute(command.args());
+                case "LRANGE" -> Lrange.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
             };
         } catch (StorageException storageException) {

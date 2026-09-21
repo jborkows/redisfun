@@ -87,18 +87,29 @@ final class Storage {
         return wrapper.get();
     }
 
-    int count(String key) throws OperationAllowedOnlyForLists {
-        var data = db.get(key);
-        if (data == null) {
-            return 0;
+    public @NonNull List<String> sublist(@NonNull String key, int start, int stop) {
+        var found = db.get(key);
+        if (found == null) {
+            return List.of();
         }
-        return switch (extractFrom(data)) {
-            case ListValue listValue -> listValue.value().size();
-            case StringValue _ -> throw new OperationAllowedOnlyForLists();
-        };
-
+        stop = stop + 1;
+        var data = extractFrom(found);
+        if (data instanceof StringValue) {
+            throw new OperationAllowedOnlyForLists();
+        } else if (data instanceof ListValue(List<String> values)) {
+            if (start > values.size()) {
+                return List.of();
+            } else if (stop >= values.size()) {
+                return List.copyOf(values.subList(start, values.size()));
+            } else if (start > stop) {
+                return List.of();
+            } else {
+                return List.copyOf(values.subList(start, stop));
+            }
+        } else {
+            throw new OperationAllowedOnlyForLists();
+        }
     }
-
 }
 
 sealed abstract class StorageException extends RuntimeException {

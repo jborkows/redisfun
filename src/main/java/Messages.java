@@ -9,6 +9,10 @@ final class Messages {
         return new PrintText(":" + value);
     }
 
+    static Effect respLength(long value) {
+        return new PrintText("*" + value);
+    }
+
     static Effect simpleMessage(String message) {
         return new PrintText("+" + message);
     }

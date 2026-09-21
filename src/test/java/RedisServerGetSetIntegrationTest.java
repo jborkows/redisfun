@@ -61,4 +61,32 @@ class RedisServerGetSetIntegrationTest {
         assertEquals(List.of(":3"), response);
     }
 
+    @Test
+    void lRangeNoElementsEmptyList() throws IOException {
+        var response = SharedRedisServer.run("LRANGE lRangeNoElementsEmptyList 0 1");
+        assertEquals(List.of("*0"), response);
+    }
+
+    @Test
+    void lRangeFindRange() throws IOException {
+        SharedRedisServer.run("RPUSH lRangeFindRange a b c d");
+        var response = SharedRedisServer.run("LRANGE lRangeFindRange 1 2");
+        assertEquals(List.of("*2", "$1", "b", "$1", "c"), response);
+        response = SharedRedisServer.run("LRANGE lRangeFindRange 0 1");
+        assertEquals(List.of("*2", "$1", "a", "$1", "b"), response);
+    }
+
+    @Test
+    void lRangeStopLargerThanSize() throws IOException {
+        SharedRedisServer.run("RPUSH lRangeStopLargerThanSize a b c d");
+        var response = SharedRedisServer.run("LRANGE lRangeStopLargerThanSize 1 10");
+        assertEquals(List.of("*3", "$1", "b", "$1", "c", "$1", "d"), response);
+    }
+
+    @Test
+    void lRangeStartLargerThanStop() throws IOException {
+        SharedRedisServer.run("RPUSH lRangeStartLargerThanStop a b c d");
+        var response = SharedRedisServer.run("LRANGE lRangeStartLargerThanStop 2 1");
+        assertEquals(List.of("*0"), response);
+    }
 }
