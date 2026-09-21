@@ -1,10 +1,16 @@
 import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 sealed interface DataPersistency {
+
+}
+
+sealed interface Value {
 
 }
 
@@ -13,30 +19,96 @@ final class Storage {
     static final Storage STORAGE = new Storage();
     private static final Map<String, DataPersistency> db = new ConcurrentHashMap<>();
 
-    Object get(@NonNull String key) {
-        var found = db.computeIfPresent(key, (k, v) -> switch (v) {
-            case Eternal eternal -> eternal;
-            case ExpiredAt expiredAt -> System.currentTimeMillis() > expiredAt.timestamp() ? null : expiredAt;
-        });
-        return switch (found) {
-            case null -> null;
+    private static Value extractFrom(DataPersistency persistency) {
+        return switch (persistency) {
             case Eternal eternal -> eternal.value();
             case ExpiredAt expiredAt -> expiredAt.value();
         };
     }
 
-    void put(@NonNull String key, Object value) {
-        db.put(key, new Eternal(value));
+    String get(@NonNull String key) throws StorageException {
+        var found = db.computeIfPresent(key, (k, v) -> switch (v) {
+            case Eternal eternal -> eternal;
+            case ExpiredAt expiredAt -> System.currentTimeMillis() > expiredAt.timestamp() ? null : expiredAt;
+        });
+        if (found == null) {
+            return null;
+        }
+
+        var value = switch (found) {
+            case Eternal eternal -> eternal.value();
+            case ExpiredAt expiredAt -> expiredAt.value();
+        };
+        return switch (value) {
+            case ListValue _ -> throw new OperationAllowedOnlyForSingleElement();
+            case StringValue stringValue -> stringValue.value();
+        };
     }
 
-    void putExpirable(String key, Object value, @NonNull Duration duration) {
+    void put(@NonNull String key, String value) {
+        db.put(key, new Eternal(new StringValue(value)));
+    }
+
+    void putExpirable(String key, String value, @NonNull Duration duration) {
         var future = System.currentTimeMillis() + duration.toMillis();
-        db.put(key, new ExpiredAt(value, future));
+        db.put(key, new ExpiredAt(new StringValue(value), future));
     }
+
+    void addElement(String key, String value) {
+        db.compute(key, (k, v) -> {
+            if (v == null) {
+                return createNewList(value);
+            }
+            return switch (extractFrom(v)) {
+                case ListValue listValue -> {
+                    listValue.value().add(value);
+                    yield v;
+                }
+                case StringValue _ -> createNewList(value);
+            };
+        });
+    }
+
+    int count(String key) throws OperationAllowedOnlyForLists {
+        var data = db.get(key);
+        if (data == null) {
+            return 0;
+        }
+        return switch (extractFrom(data)) {
+            case ListValue listValue -> listValue.value().size();
+            case StringValue _ -> throw new OperationAllowedOnlyForLists();
+        };
+
+    }
+
+    private DataPersistency createNewList(String initialElement) {
+        var elements = new ArrayList<String>();
+        elements.add(initialElement);
+        return new Eternal(new ListValue(elements));
+    }
+
 }
 
-record Eternal(Object value) implements DataPersistency {
+sealed abstract class StorageException extends RuntimeException {
+
 }
 
-record ExpiredAt(Object value, long timestamp) implements DataPersistency {
+final class OperationAllowedOnlyForSingleElement extends StorageException {
+
+}
+
+final class OperationAllowedOnlyForLists extends StorageException {
+
+}
+
+record StringValue(String value) implements Value {
+}
+
+record ListValue(List<String> value) implements Value {
+}
+
+record Eternal(Value value) implements DataPersistency {
+}
+
+record ExpiredAt(Value value, long timestamp) implements DataPersistency {
 }

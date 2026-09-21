@@ -14,7 +14,7 @@ final class SetCommand {
 
     static List<Effect> execute(List<String> args) {
         if (args.size() < 2) {
-            return Messages.errorMessage("set");
+            return Messages.wrongNumberOfArguments("set");
         }
         var options = args.subList(2, args.size());
         if (hasInvalidOptions(options)) {

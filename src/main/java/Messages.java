@@ -5,6 +5,10 @@ final class Messages {
     private Messages() {
     }
 
+    static Effect respInteger(long value) {
+        return new PrintText(":" + value);
+    }
+
     static Effect simpleMessage(String message) {
         return new PrintText("+" + message);
     }
@@ -17,11 +21,15 @@ final class Messages {
         return new PrintText("$-1");
     }
 
-    static List<Effect> errorMessage(String commandName) {
-        return List.of(new PrintText("-ERR wrong number of arguments for '" + commandName + "' command"));
+    static List<Effect> errorMessage(String message) {
+        return List.of(new PrintText("-ERR " + message));
+    }
+
+    static List<Effect> wrongNumberOfArguments(String commandName) {
+        return errorMessage("wrong number of arguments for '" + commandName + "' command");
     }
 
     static List<Effect> syntaxError() {
-        return List.of(new PrintText("-ERR syntax error"));
+        return errorMessage("syntax error");
     }
 }

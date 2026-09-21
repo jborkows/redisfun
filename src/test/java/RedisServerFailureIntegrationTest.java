@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Failure scenarios: commands that are rejected with an explicit error reply,
- * and malformed/unknown input that the server silently ignores (no response
+ * and malformed input that the server silently ignores (no response
  * at all, observed as an empty reply after the read timeout).
  */
 @TestMethodOrder(MethodOrderer.Random.class)
@@ -31,9 +31,9 @@ class RedisServerFailureIntegrationTest {
     }
 
     @Test
-    void unknownCommandReceivesNoResponse() throws IOException {
+    void unknownCommandRespondsWithError() throws IOException {
         var response = SharedRedisServer.sendCommand("*1", "$3", "FOO");
-        assertEquals(List.of(), response);
+        assertEquals(List.of("-ERR Unknown command 'FOO'"), response);
     }
 
     @Test
