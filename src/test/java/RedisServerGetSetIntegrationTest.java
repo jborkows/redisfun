@@ -48,11 +48,17 @@ class RedisServerGetSetIntegrationTest {
     }
 
     @Test
-    void rpush() throws IOException, InterruptedException {
+    void rpush() throws IOException {
         var response = SharedRedisServer.run("RPUSH list_key \"foo\"");
         assertEquals(List.of(":1"), response);
         response = SharedRedisServer.run("RPUSH list_key \"zoo\"");
         assertEquals(List.of(":2"), response);
+    }
+
+    @Test
+    void rpushMultiple() throws IOException {
+        var response = SharedRedisServer.run("RPUSH list_multiple foo zoo moo");
+        assertEquals(List.of(":3"), response);
     }
 
 }

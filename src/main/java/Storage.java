@@ -67,14 +67,14 @@ final class Storage {
         });
     }
 
-    void addElement(@NonNull String key, @NonNull String value) {
+    void addElement(@NonNull String key, @NonNull List<String> values) {
         db.compute(key, (k, v) -> {
             if (v == null) {
-                return createNewList(value);
+                return new Eternal(new ListValue(new ArrayList<>(values)));
             }
             return switch (extractFrom(v)) {
                 case ListValue listValue -> {
-                    listValue.value().add(value);
+                    listValue.value().addAll(values);
                     yield v;
                 }
                 case StringValue _ -> throw CannotModifyType.cannotModifyFromElement();
@@ -92,12 +92,6 @@ final class Storage {
             case StringValue _ -> throw new OperationAllowedOnlyForLists();
         };
 
-    }
-
-    private DataPersistency createNewList(String initialElement) {
-        var elements = new ArrayList<String>();
-        elements.add(initialElement);
-        return new Eternal(new ListValue(elements));
     }
 
 }
