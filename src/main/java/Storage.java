@@ -1,4 +1,5 @@
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -6,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -153,6 +155,32 @@ final class Storage {
             case ListValue list -> list.value().size();
             case StringValue _ -> throw new OperationAllowedOnlyForLists();
         };
+    }
+
+    @Nullable
+    public String pop(String key) {
+        var reference = new AtomicReference<String>(null);
+        db.computeIfPresent(key, (aKey, existing) -> {
+            switch (extractFrom(existing)) {
+                case ListValue listValue -> {
+                    var elements = listValue.value();
+                    if (elements.isEmpty()) {
+                        reference.set(null);
+                        return null;
+                    }
+                    var found = elements.removeFirst();
+                    reference.set(found);
+                    if (elements.isEmpty()) {
+                        return null;
+                    }
+                    return existing;
+                }
+                case StringValue _ -> {
+                    throw new OperationAllowedOnlyForLists();
+                }
+            }
+        });
+        return reference.get();
     }
 }
 
