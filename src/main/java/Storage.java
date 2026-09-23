@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Level;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 sealed interface DataPersistency {
@@ -86,6 +86,20 @@ final class Storage {
     }
 
     int addElement(@NonNull String key, @NonNull List<String> values) {
+        return operateOnList(key, values, (list) -> {
+            list.addAll(values);
+        });
+    }
+
+    int prependElements(@NonNull String key, @NonNull List<String> values) {
+        return operateOnList(key, values.reversed(), (list) -> {
+            for (String value : values) {
+                list.addFirst(value);
+            }
+        });
+    }
+
+    private int operateOnList(@NonNull String key, @NonNull List<String> values, Consumer<List<String>> merger) {
         var wrapper = new AtomicInteger(0);
         db.compute(key, (k, v) -> {
             if (v == null) {
@@ -94,7 +108,7 @@ final class Storage {
             }
             return switch (extractFrom(v)) {
                 case ListValue listValue -> {
-                    listValue.value().addAll(values);
+                    merger.accept(listValue.value());
                     wrapper.set(listValue.value().size());
                     yield v;
                 }
@@ -103,6 +117,7 @@ final class Storage {
         });
         return wrapper.get();
     }
+
 
     public @NonNull List<String> sublist(@NonNull String key, int start, int stop) {
         var found = db.get(key);
@@ -131,6 +146,7 @@ final class Storage {
             throw new OperationAllowedOnlyForLists();
         }
     }
+
 }
 
 sealed abstract class StorageException extends RuntimeException {

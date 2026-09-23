@@ -12,6 +12,7 @@ class Interpreter {
                 case SetCommand.NAME -> SetCommand.execute(command.args());
                 case Rpush.NAME -> Rpush.execute(command.args());
                 case Lrange.NAME -> Lrange.execute(command.args());
+                case Lpush.NAME -> Lpush.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
             };
         } catch (StorageException storageException) {
