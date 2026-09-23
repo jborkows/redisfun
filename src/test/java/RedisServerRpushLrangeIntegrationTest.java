@@ -11,51 +11,55 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 class RedisServerRpushLrangeIntegrationTest {
 
     @Test
-    void rpush() throws IOException {
-        var response = SharedRedisServer.run("RPUSH list_key \"foo\"");
+    void rpush(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.run("RPUSH %s \"foo\"".formatted(key));
         assertEquals(List.of(":1"), response);
-        response = SharedRedisServer.run("RPUSH list_key \"zoo\"");
+        response = SharedRedisServer.run("RPUSH %s \"zoo\"".formatted(key));
         assertEquals(List.of(":2"), response);
     }
 
     @Test
-    void rpushMultiple() throws IOException {
-        var response = SharedRedisServer.run("RPUSH list_multiple foo zoo moo");
+    void rpushMultiple(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("RPUSH %s foo zoo moo".formatted(SharedRedisServer.key(testInfo)));
         assertEquals(List.of(":3"), response);
     }
 
     @Test
-    void lRangeNoElementsEmptyList() throws IOException {
-        var response = SharedRedisServer.run("LRANGE lRangeNoElementsEmptyList 0 1");
+    void lRangeNoElementsEmptyList(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LRANGE %s 0 1".formatted(SharedRedisServer.key(testInfo)));
         assertEquals(List.of("*0"), response);
     }
 
     @Test
-    void lRangeFindRange() throws IOException {
-        SharedRedisServer.run("RPUSH lRangeFindRange a b c d");
-        var response = SharedRedisServer.run("LRANGE lRangeFindRange 1 2");
+    void lRangeFindRange(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("RPUSH %s a b c d".formatted(key));
+        var response = SharedRedisServer.run("LRANGE %s 1 2".formatted(key));
         assertEquals(List.of("*2", "$1", "b", "$1", "c"), response);
-        response = SharedRedisServer.run("LRANGE lRangeFindRange 0 1");
+        response = SharedRedisServer.run("LRANGE %s 0 1".formatted(key));
         assertEquals(List.of("*2", "$1", "a", "$1", "b"), response);
     }
 
     @Test
-    void lRangeStopLargerThanSize() throws IOException {
-        SharedRedisServer.run("RPUSH lRangeStopLargerThanSize a b c d");
-        var response = SharedRedisServer.run("LRANGE lRangeStopLargerThanSize 1 10");
+    void lRangeStopLargerThanSize(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("RPUSH %s a b c d".formatted(key));
+        var response = SharedRedisServer.run("LRANGE %s 1 10".formatted(key));
         assertEquals(List.of("*3", "$1", "b", "$1", "c", "$1", "d"), response);
     }
 
     @Test
-    void lRangeStartLargerThanStop() throws IOException {
-        SharedRedisServer.run("RPUSH lRangeStartLargerThanStop a b c d");
-        var response = SharedRedisServer.run("LRANGE lRangeStartLargerThanStop 2 1");
+    void lRangeStartLargerThanStop(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("RPUSH %s a b c d".formatted(key));
+        var response = SharedRedisServer.run("LRANGE %s 2 1".formatted(key));
         assertEquals(List.of("*0"), response);
     }
 
     @TestFactory
-    Stream<DynamicTest> lRangeNegativeIndexes() throws IOException {
-        var key = "lRangeNegativeIndexes";
+    Stream<DynamicTest> lRangeNegativeIndexes(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
         SharedRedisServer.run("RPUSH %s a b c d e".formatted(key));
         var prefix = "Array a b c d e";
         return Stream.of(
@@ -79,15 +83,16 @@ class RedisServerRpushLrangeIntegrationTest {
     }
 
     @Test
-    void lRangeNegativeStartAfterPositiveStop() throws IOException {
-        SharedRedisServer.run("RPUSH lRangeNegativeStartAfterPositiveStop a b c d e");
-        var response = SharedRedisServer.run("LRANGE lRangeNegativeStartAfterPositiveStop -1 0");
+    void lRangeNegativeStartAfterPositiveStop(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("RPUSH %s a b c d e".formatted(key));
+        var response = SharedRedisServer.run("LRANGE %s -1 0".formatted(key));
         assertEquals(List.of("*0"), response);
     }
 
     @Test
-    void lRangeNegativeIndexesForNonExistingKey() throws IOException {
-        var response = SharedRedisServer.run("LRANGE lRangeNegativeIndexesForNonExistingKey 0 -1");
+    void lRangeNegativeIndexesForNonExistingKey(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LRANGE %s 0 -1".formatted(SharedRedisServer.key(testInfo)));
         assertEquals(List.of("*0"), response);
     }
 }

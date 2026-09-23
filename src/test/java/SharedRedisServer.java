@@ -1,3 +1,5 @@
+import org.junit.jupiter.api.TestInfo;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.Socket;
@@ -18,6 +20,18 @@ final class SharedRedisServer {
     private static RedisServer server;
 
     private SharedRedisServer() {
+    }
+
+    /**
+     * Unique key for a test, derived from the test class and method name
+     * (e.g. "RedisServerLLenIntegrationTest.llenForNotExistingListShouldReturnZero").
+     * Because the server is shared by all integration test classes in the same
+     * JVM fork, class + method is the smallest scope that guarantees no two
+     * tests ever operate on the same key.
+     */
+    static String key(TestInfo testInfo) {
+        return testInfo.getTestClass().orElseThrow().getSimpleName()
+                + "." + testInfo.getTestMethod().orElseThrow().getName();
     }
 
     static synchronized int port() {

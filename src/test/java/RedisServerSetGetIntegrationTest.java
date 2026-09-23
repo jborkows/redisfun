@@ -1,5 +1,6 @@
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import java.io.IOException;
@@ -12,38 +13,41 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RedisServerSetGetIntegrationTest {
 
     @Test
-    void getForNotExistingKey() throws IOException {
-        var response = SharedRedisServer.run("GET A");
+    void getForNotExistingKey(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("GET %s".formatted(SharedRedisServer.key(testInfo)));
         assertEquals(List.of("$-1"), response);
     }
 
     @Test
-    void setKeyAndFetch() throws IOException {
-        var response = SharedRedisServer.run("SET B X");
+    void setKeyAndFetch(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.run("SET %s X".formatted(key));
         assertEquals(List.of("+OK"), response);
-        response = SharedRedisServer.run("GET B");
+        response = SharedRedisServer.run("GET %s".formatted(key));
         assertEquals(List.of("$1", "X"), response);
     }
 
     @Test
-    void setKeyAndFetchWithExpire() throws IOException, InterruptedException {
-        var response = SharedRedisServer.run("SET C X EX 2");
+    void setKeyAndFetchWithExpire(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.run("SET %s X EX 2".formatted(key));
         assertEquals(List.of("+OK"), response);
-        response = SharedRedisServer.run("GET C");
+        response = SharedRedisServer.run("GET %s".formatted(key));
         assertEquals(List.of("$1", "X"), response);
         TimeUnit.SECONDS.sleep(2);
-        response = SharedRedisServer.run("GET C");
+        response = SharedRedisServer.run("GET %s".formatted(key));
         assertEquals(List.of("$-1"), response);
     }
 
     @Test
-    void setKeyAndFetchWithExpireMiliseconds() throws IOException, InterruptedException {
-        var response = SharedRedisServer.run("SET D Z PX 2000");
+    void setKeyAndFetchWithExpireMiliseconds(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.run("SET %s Z PX 2000".formatted(key));
         assertEquals(List.of("+OK"), response);
-        response = SharedRedisServer.run("GET D");
+        response = SharedRedisServer.run("GET %s".formatted(key));
         assertEquals(List.of("$1", "Z"), response);
         TimeUnit.SECONDS.sleep(2);
-        response = SharedRedisServer.run("GET D");
+        response = SharedRedisServer.run("GET %s".formatted(key));
         assertEquals(List.of("$-1"), response);
     }
 }

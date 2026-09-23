@@ -30,7 +30,7 @@ final class Storage {
         };
     }
 
-    private static int normalizeIndex(List<String> values, int index) {
+    private static int normalizeIndex(@NonNull List<String> values, int index) {
         if (index >= values.size()) {
             return index;
         }
@@ -96,7 +96,7 @@ final class Storage {
         return operateOnList(key, front, (list) -> list.addAll(0, front));
     }
 
-    private int operateOnList(@NonNull String key, @NonNull List<String> values, Consumer<List<String>> merger) {
+    private int operateOnList(@NonNull String key, @NonNull List<String> values, @NonNull Consumer<List<String>> merger) {
         var wrapper = new AtomicInteger(0);
         db.compute(key, (k, v) -> {
             if (v == null) {
@@ -144,6 +144,16 @@ final class Storage {
         }
     }
 
+    public int lengthOf(@NonNull String key) {
+        var found = db.get(key);
+        if (found == null) {
+            return 0;
+        }
+        return switch (extractFrom(found)) {
+            case ListValue list -> list.value().size();
+            case StringValue _ -> throw new OperationAllowedOnlyForLists();
+        };
+    }
 }
 
 sealed abstract class StorageException extends RuntimeException {

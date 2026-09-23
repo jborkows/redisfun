@@ -1,5 +1,6 @@
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import java.io.IOException;
@@ -11,15 +12,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RedisServerLpushLrangeIntegrationTest {
 
     @Test
-    void lPushWhenNotExists() throws IOException {
-        var lPushWhenNotExists = "lPushWhenNotExists";
-        var response = SharedRedisServer.run("LPUSH %s a b c".formatted(lPushWhenNotExists));
+    void lPushWhenNotExists(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.run("LPUSH %s a b c".formatted(key));
         assertEquals(List.of(":3"), response);
     }
 
     @Test
-    void lpushInsertsInReverseOrder() throws IOException {
-        var key = "lpushInsertsInReverseOrder";
+    void lpushInsertsInReverseOrder(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
         var response = SharedRedisServer.run("LPUSH %s a b c".formatted(key));
         assertEquals(List.of(":3"), response);
         response = SharedRedisServer.run("LRANGE %s 0 3".formatted(key));
@@ -27,8 +28,8 @@ class RedisServerLpushLrangeIntegrationTest {
     }
 
     @Test
-    void lpushInSeriesShouldGiveSameResult() throws IOException {
-        var key = "lpushInSeriesShouldGiveSameResult";
+    void lpushInSeriesShouldGiveSameResult(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
         SharedRedisServer.run("LPUSH %s a".formatted(key));
         SharedRedisServer.run("LPUSH %s b".formatted(key));
         SharedRedisServer.run("LPUSH %s c".formatted(key));
@@ -37,8 +38,8 @@ class RedisServerLpushLrangeIntegrationTest {
     }
 
     @Test
-    void lPushShouldExtendExisting() throws IOException {
-        var key = "lPushShouldExtendExisting";
+    void lPushShouldExtendExisting(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
         SharedRedisServer.run("RPUSH %s a b".formatted(key));
         SharedRedisServer.run("LPUSH %s c".formatted(key));
         var response = SharedRedisServer.run("LRANGE %s 0 3".formatted(key));
