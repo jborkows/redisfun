@@ -9,9 +9,9 @@ class Interpreter {
                 case "PING" -> List.of(Messages.simpleMessage("PONG"));
                 case "ECHO" -> echo(command.args());
                 case "GET" -> getCommand(command.args());
-                case "SET" -> SetCommand.execute(command.args());
-                case "RPUSH" -> Rpush.execute(command.args());
-                case "LRANGE" -> Lrange.execute(command.args());
+                case SetCommand.NAME -> SetCommand.execute(command.args());
+                case Rpush.NAME -> Rpush.execute(command.args());
+                case Lrange.NAME -> Lrange.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
             };
         } catch (StorageException storageException) {

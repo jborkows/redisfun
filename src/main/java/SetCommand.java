@@ -6,6 +6,7 @@ import java.util.Locale;
 
 final class SetCommand {
 
+    static final String NAME = "SET";
     static final String EX = "EX";
     static final String PX = "PX";
 
@@ -14,7 +15,7 @@ final class SetCommand {
 
     static List<Effect> execute(List<String> args) {
         if (args.size() < 2) {
-            return Messages.wrongNumberOfArguments("set");
+            return Messages.wrongNumberOfArguments(NAME);
         }
         var options = args.subList(2, args.size());
         if (hasInvalidOptions(options)) {

@@ -2,12 +2,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class Lrange {
+
+    static final String NAME = "LRANGE";
+
     private Lrange() {
     }
 
     static List<Effect> execute(List<String> args) {
         if (args.size() != 3) {
-            return Messages.wrongNumberOfArguments("Lrange");
+            return Messages.wrongNumberOfArguments(NAME);
         }
         var key = args.getFirst();
         var start = args.get(1);

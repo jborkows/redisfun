@@ -57,7 +57,7 @@ class InterpreterTest {
     @Test
     void respondsWithErrorForSetWithMissingValue() {
         var effects = Interpreter.interpret(new Command("SET", List.of("a")));
-        assertEquals(List.of(new PrintText("-ERR wrong number of arguments for 'set' command")), effects);
+        assertEquals(List.of(new PrintText("-ERR wrong number of arguments for '" + SetCommand.NAME + "' command")), effects);
     }
 
     @Test

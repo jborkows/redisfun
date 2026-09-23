@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 sealed interface DataPersistency {
 
@@ -18,6 +20,7 @@ sealed interface Value {
 final class Storage {
 
     static final Storage STORAGE = new Storage();
+    private static final Logger LOGGER = Logger.getLogger(Storage.class.getName());
     private static final Map<String, DataPersistency> db = new ConcurrentHashMap<>();
 
     private static Value extractFrom(DataPersistency persistency) {
@@ -25,6 +28,20 @@ final class Storage {
             case Eternal eternal -> eternal.value();
             case ExpiredAt expiredAt -> expiredAt.value();
         };
+    }
+
+    private static int normalizeIndex(List<String> values, int index) {
+        if (index >= values.size()) {
+            return index;
+        }
+        if (index >= 0) {
+            return index;
+        }
+        index = -index;
+        if (index >= values.size()) {
+            return 0;
+        }
+        return values.size() - index;
     }
 
     String get(@NonNull String key) throws StorageException {
@@ -92,19 +109,23 @@ final class Storage {
         if (found == null) {
             return List.of();
         }
-        stop = stop + 1;
         var data = extractFrom(found);
         if (data instanceof StringValue) {
             throw new OperationAllowedOnlyForLists();
         } else if (data instanceof ListValue(List<String> values)) {
-            if (start > values.size()) {
+            if (values.isEmpty()) {
                 return List.of();
-            } else if (stop >= values.size()) {
-                return List.copyOf(values.subList(start, values.size()));
-            } else if (start > stop) {
+            }
+            var normalizedStart = normalizeIndex(values, start);
+            var normalizedStop = Math.min(normalizeIndex(values, stop) + 1, values.size());
+            LOGGER.fine(() -> "For " + key + " start = " + start + " normalized = " + normalizedStart + " stop = " + stop + " normalized = " + normalizedStop);
+            if (normalizedStart >= values.size()) {
+                return List.of();
+            }
+            if (normalizedStart > normalizedStop) {
                 return List.of();
             } else {
-                return List.copyOf(values.subList(start, stop));
+                return List.copyOf(values.subList(normalizedStart, normalizedStop));
             }
         } else {
             throw new OperationAllowedOnlyForLists();
