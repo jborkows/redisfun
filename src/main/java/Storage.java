@@ -92,11 +92,8 @@ final class Storage {
     }
 
     int prependElements(@NonNull String key, @NonNull List<String> values) {
-        return operateOnList(key, values.reversed(), (list) -> {
-            for (String value : values) {
-                list.addFirst(value);
-            }
-        });
+        var front = values.reversed();
+        return operateOnList(key, front, (list) -> list.addAll(0, front));
     }
 
     private int operateOnList(@NonNull String key, @NonNull List<String> values, Consumer<List<String>> merger) {
