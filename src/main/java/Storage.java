@@ -158,8 +158,11 @@ final class Storage {
     }
 
     @Nullable
-    public String pop(String key) {
-        var reference = new AtomicReference<String>(null);
+    public List<String> pop(String key, int howMany) {
+        if (howMany < 1) {
+            throw new OnlyPositiveValues();
+        }
+        var reference = new AtomicReference<List<String>>(null);
         db.computeIfPresent(key, (aKey, existing) -> {
             switch (extractFrom(existing)) {
                 case ListValue listValue -> {
@@ -168,8 +171,17 @@ final class Storage {
                         reference.set(null);
                         return null;
                     }
-                    var found = elements.removeFirst();
-                    reference.set(found);
+                    if (howMany == 1) {
+                        var found = elements.removeFirst();
+                        reference.set(List.of(found));
+                    } else if (howMany >= elements.size()) {
+                        reference.set(elements);
+                        return null;
+                    } else {
+                        var view = elements.subList(0, howMany);
+                        reference.set(List.copyOf(view));
+                        view.clear();
+                    }
                     if (elements.isEmpty()) {
                         return null;
                     }
@@ -194,6 +206,9 @@ final class OperationAllowedOnlyForSingleElement extends StorageException {
 
 final class OperationAllowedOnlyForLists extends StorageException {
 
+}
+
+final class OnlyPositiveValues extends StorageException {
 }
 
 final class CannotModifyType extends StorageException {

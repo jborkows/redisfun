@@ -30,6 +30,7 @@ class Interpreter {
                     Messages.wrongType("Operation %s allowed only for single element".formatted(commandName));
             case CannotModifyType cannotModifyType ->
                     Messages.wrongType("Operation %s cannot change type from %s".formatted(commandName, cannotModifyType.existingType));
+            default -> Messages.errorMessage("Unexpected exception: " + storageException);
         };
     }
 

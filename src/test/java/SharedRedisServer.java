@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Semaphore;
 
 /**
  * Single Redis server instance shared by every integration test class in this
@@ -17,6 +18,7 @@ import java.util.List;
  */
 final class SharedRedisServer {
 
+    private static final Semaphore MAX_CONCURRENT_SOCKETS = new Semaphore(50);
     private static RedisServer server;
 
     private SharedRedisServer() {
@@ -72,41 +74,49 @@ final class SharedRedisServer {
     }
 
     static List<String> sendCommand(String... command) throws IOException {
-        try (var socket = new Socket("localhost", port())) {
-            // Bound the blocking read so a short/incomplete response fails the test
-            // instead of freezing it (readLine() can never be unblocked otherwise).
-            socket.setSoTimeout(300);
-            for (var cmd : command) {
-                socket.getOutputStream().write((cmd + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
-            }
-            socket.getOutputStream().flush();
-
-            var response = new ByteArrayOutputStream();
-            var buffer = new byte[1024];
-            var in = socket.getInputStream();
-            try {
-                while (true) {
-                    var read = in.read(buffer);
-                    if (read == -1) {
-                        break;
-                    }
-                    response.write(buffer, 0, read);
+        try {
+            MAX_CONCURRENT_SOCKETS.acquire();
+            try (var socket = new Socket("localhost", port())) {
+                // Bound the blocking read so a short/incomplete response fails the test
+                // instead of freezing it (readLine() can never be unblocked otherwise).
+                socket.setSoTimeout(300);
+                for (var cmd : command) {
+                    socket.getOutputStream().write((cmd + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
                 }
-            } catch (SocketTimeoutException ignored) {
-                // server stopped sending; evaluate what has been received
-            }
+                socket.getOutputStream().flush();
 
-            var text = response.toString(StandardCharsets.ISO_8859_1);
-            if (text.isEmpty()) {
-                return List.of();
+                var response = new ByteArrayOutputStream();
+                var buffer = new byte[1024];
+                var in = socket.getInputStream();
+                try {
+                    while (true) {
+                        var read = in.read(buffer);
+                        if (read == -1) {
+                            break;
+                        }
+                        response.write(buffer, 0, read);
+                    }
+                } catch (SocketTimeoutException ignored) {
+                    // server stopped sending; evaluate what has been received
+                }
+
+                var text = response.toString(StandardCharsets.ISO_8859_1);
+                if (text.isEmpty()) {
+                    return List.of();
+                }
+                var lines = new ArrayList<>(Arrays.asList(text.split("\r\n", -1)));
+                // The response always ends with CRLF, which leaves one trailing
+                // empty element behind; drop only that one.
+                if (!lines.isEmpty() && lines.getLast().isEmpty()) {
+                    lines.removeLast();
+                }
+                return lines;
+            } finally {
+                MAX_CONCURRENT_SOCKETS.release();
             }
-            var lines = new ArrayList<>(Arrays.asList(text.split("\r\n", -1)));
-            // The response always ends with CRLF, which leaves one trailing
-            // empty element behind; drop only that one.
-            if (!lines.isEmpty() && lines.getLast().isEmpty()) {
-                lines.removeLast();
-            }
-            return lines;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
         }
     }
 }

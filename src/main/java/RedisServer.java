@@ -2,18 +2,26 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Semaphore;
 import java.util.logging.Logger;
 
 public final class RedisServer implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(RedisServer.class.getName());
     private static final String SEPARATOR = "\r\n";
+    private static final int DEFAULT_MAX_CLIENTS = Integer.getInteger("redis.maxclients", 1000);
     private final int requestedPort;
+    private final Semaphore clientSlots;
     private ServerSocket serverSocket;
     private Thread acceptThread;
     private volatile boolean running;
 
     public RedisServer(int port) {
+        this(port, DEFAULT_MAX_CLIENTS);
+    }
+
+    RedisServer(int port, int maxClients) {
         this.requestedPort = port;
+        this.clientSlots = new Semaphore(maxClients);
     }
 
     /**
@@ -54,8 +62,22 @@ public final class RedisServer implements AutoCloseable {
         while (running) {
             try {
                 var clientSocket = serverSocket.accept();
+                // Always accept once: blocking here (backpressure) would stall
+                // the accept loop and make *every* new connection hang. Instead,
+                // keep the loop free and reject only once the cap is exceeded.
+                if (!clientSlots.tryAcquire()) {
+                    reject(clientSocket);
+                    continue;
+                }
                 Thread.ofVirtual().start(() -> {
-                    handleClient(clientSocket);
+                    try {
+                        handleClient(clientSocket);
+                    } finally {
+                        // Release must happen even when the client vanishes
+                        // mid-read (handleClient swallows IOException), or
+                        // dead connections would slowly consume all slots.
+                        clientSlots.release();
+                    }
                 });
             } catch (IOException e) {
                 if (running) {
@@ -63,6 +85,24 @@ public final class RedisServer implements AutoCloseable {
                 }
                 // otherwise: socket closed by close(), shutting down
             }
+        }
+    }
+
+    /**
+     * Redis-style maxclients behavior: when the connection cap is exceeded,
+     * accept once (to be able to reply), send an explicit error reply and
+     * close the socket. No handler thread and no slot are consumed.
+     */
+    private void reject(Socket clientSocket) {
+        try (clientSocket) {
+            clientSocket.getOutputStream().write(
+                    ("-ERR max number of clients reached" + SEPARATOR)
+                            .getBytes(StandardCharsets.ISO_8859_1));
+            clientSocket.getOutputStream().flush();
+        } catch (IOException e) {
+            // The reject path must never disturb the accept loop; a dead
+            // client here is simply dropped.
+            logger.fine("Failed to reject a client: " + e.getMessage());
         }
     }
 
