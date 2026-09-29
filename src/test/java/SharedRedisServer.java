@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Semaphore;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Single Redis server instance shared by every integration test class in this
@@ -18,6 +20,7 @@ import java.util.concurrent.Semaphore;
  */
 final class SharedRedisServer {
 
+    private static final Logger LOGGER = Logger.getLogger(SharedRedisServer.class.getName());
     private static final Semaphore MAX_CONCURRENT_SOCKETS = new Semaphore(50);
     private static RedisServer server;
 
@@ -79,16 +82,18 @@ final class SharedRedisServer {
             try (var socket = new Socket("localhost", port())) {
                 // Bound the blocking read so a short/incomplete response fails the test
                 // instead of freezing it (readLine() can never be unblocked otherwise).
-                socket.setSoTimeout(300);
+                socket.setSoTimeout(SocketTimeout.timeoutMs());
                 for (var cmd : command) {
                     socket.getOutputStream().write((cmd + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
                 }
                 socket.getOutputStream().flush();
+                OnWroteRegister.socketWroteData();
 
                 var response = new ByteArrayOutputStream();
                 var buffer = new byte[1024];
                 var in = socket.getInputStream();
                 try {
+                    LOGGER.log(Level.FINER, "Starting reading socket after command " + Arrays.toString(command));
                     while (true) {
                         var read = in.read(buffer);
                         if (read == -1) {
@@ -96,8 +101,10 @@ final class SharedRedisServer {
                         }
                         response.write(buffer, 0, read);
                     }
-                } catch (SocketTimeoutException ignored) {
-                    // server stopped sending; evaluate what has been received
+                } catch (SocketTimeoutException e) {
+                    LOGGER.log(Level.SEVERE, "Socket timed out after command " + Arrays.toString(command), e);
+                } catch (Exception e) {
+                    LOGGER.log(Level.SEVERE, "Some other error while reading after command " + Arrays.toString(command), e);
                 }
 
                 var text = response.toString(StandardCharsets.ISO_8859_1);

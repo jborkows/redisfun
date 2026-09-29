@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,6 +25,7 @@ final class Storage {
     static final Storage STORAGE = new Storage();
     private static final Logger LOGGER = Logger.getLogger(Storage.class.getName());
     private static final Map<String, DataPersistency> db = new ConcurrentHashMap<>();
+    private static final Map<String, List<CompletableFuture<String>>> pops = new ConcurrentHashMap<>();
 
     private static Value extractFrom(DataPersistency persistency) {
         return switch (persistency) {
@@ -44,6 +46,38 @@ final class Storage {
             return 0;
         }
         return values.size() - index;
+    }
+
+    private static void doBlockingPop(@NonNull String key) {
+        db.compute(key, (aKey, existing) -> {
+            if (existing == null) {
+                return null;
+            }
+            switch (extractFrom(existing)) {
+                case ListValue listValue -> {
+                    var elements = listValue.value();
+                    if (elements.isEmpty()) {
+                        return null;
+                    }
+                    pops.compute(aKey, (_, acc) -> {
+                        if (acc == null) {
+                            return null;
+                        }
+                        var howMany = Math.min(elements.size(), acc.size());
+                        while (howMany-- > 0) {
+                            var toComplete = acc.removeFirst();
+                            LOGGER.finer(() -> "Completing blocking for key = " + aKey);
+                            toComplete.complete(elements.removeFirst());
+                        }
+                        return acc;
+                    });
+                    return existing;
+                }
+                case StringValue _ -> {
+                    return existing;
+                }
+            }
+        });
     }
 
     String get(@NonNull String key) throws StorageException {
@@ -85,6 +119,8 @@ final class Storage {
                 case StringValue _ -> data;
             };
         });
+        Thread.ofVirtual().start(() -> doBlockingPop(key));
+
     }
 
     int addElement(@NonNull String key, @NonNull List<String> values) {
@@ -114,9 +150,9 @@ final class Storage {
                 case StringValue _ -> throw CannotModifyType.cannotModifyFromElement();
             };
         });
+        Thread.ofVirtual().start(() -> doBlockingPop(key));
         return wrapper.get();
     }
-
 
     public @NonNull List<String> sublist(@NonNull String key, int start, int stop) {
         var found = db.get(key);
@@ -132,7 +168,7 @@ final class Storage {
             }
             var normalizedStart = normalizeIndex(values, start);
             var normalizedStop = Math.min(normalizeIndex(values, stop) + 1, values.size());
-            LOGGER.fine(() -> "For " + key + " start = " + start + " normalized = " + normalizedStart + " stop = " + stop + " normalized = " + normalizedStop);
+            LOGGER.finer(() -> "For " + key + " start = " + start + " normalized = " + normalizedStart + " stop = " + stop + " normalized = " + normalizedStop);
             if (normalizedStart >= values.size()) {
                 return List.of();
             }
@@ -158,7 +194,7 @@ final class Storage {
     }
 
     @Nullable
-    public List<String> pop(String key, int howMany) {
+    public List<String> pop(@NonNull String key, int howMany) {
         if (howMany < 1) {
             throw new OnlyPositiveValues();
         }
@@ -193,6 +229,21 @@ final class Storage {
             }
         });
         return reference.get();
+    }
+
+    @NonNull
+    public CompletableFuture<String> blockingPop(@NonNull String key) {
+        var future = new CompletableFuture<String>();
+        LOGGER.finer(() -> "Blocking pop operation for " + key);
+        pops.compute(key, (_, acc) -> {
+            if (acc == null) {
+                acc = new ArrayList<>();
+            }
+            acc.add(future);
+            return acc;
+        });
+        doBlockingPop(key);
+        return future;
     }
 }
 

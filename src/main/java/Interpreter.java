@@ -15,6 +15,7 @@ class Interpreter {
                 case Lpush.NAME -> Lpush.execute(command.args());
                 case Llen.NAME -> Llen.execute(command.args());
                 case Lpop.NAME -> Lpop.execute(command.args());
+                case Blpop.NAME -> Blpop.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
             };
         } catch (StorageException storageException) {
