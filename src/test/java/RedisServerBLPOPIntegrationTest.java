@@ -84,6 +84,58 @@ class RedisServerBLPOPIntegrationTest {
         assertTrue(blpop1.finishedAt.isBefore(blpop2.finishedAt));
     }
 
+    @Test
+    void ifResponseAfterTimeoutIgnoreIt(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        var blpop = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("BLPOP %s 0.1".formatted(key)), 1000));
+        var blpopThread = new Thread(blpop);
+        blpopThread.start();
+        TimeUnit.MILLISECONDS.sleep(200);
+        SharedRedisServer.run("RPUSH %s a".formatted(key));
+        try {
+            blpopThread.join();
+        } catch (InterruptedException e) {
+            LOGGER.info(() -> "Interrupted while waiting for blpop thread to finish");
+        }
+        assertEquals(List.of("*-1"), blpop.result);
+    }
+
+    @Test
+    void BLPOPCanDecideHowMuchToWaitAndIfResponseReturnsInTimeOk(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        var blpop = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("BLPOP %s 0.1".formatted(key)), 1000));
+        var blpopThread = new Thread(blpop);
+        blpopThread.start();
+        TimeUnit.MILLISECONDS.sleep(10);
+        SharedRedisServer.run("RPUSH %s a".formatted(key));
+        try {
+            blpopThread.join();
+        } catch (InterruptedException e) {
+            LOGGER.info(() -> "Interrupted while waiting for blpop thread to finish");
+        }
+        assertEquals(List.of("*2", "$%d".formatted(key.length()), key, "$1", "a"), blpop.result);
+    }
+
+    @Test
+    void ifResponseAfterTimeoutIgnoreItAndDoNotPerformAction(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        var blpop = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("BLPOP %s 0.1".formatted(key)), 1000));
+        var blpopThread = new Thread(blpop);
+        blpopThread.start();
+        try {
+            blpopThread.join();
+        } catch (InterruptedException e) {
+            LOGGER.info(() -> "Interrupted while waiting for blpop thread to finish");
+        }
+        TimeUnit.MILLISECONDS.sleep(200);
+        SharedRedisServer.run("RPUSH %s a b".formatted(key));
+        TimeUnit.MILLISECONDS.sleep(200);
+
+        var response = SharedRedisServer.run("BLPOP %s 0".formatted(key));
+        assertEquals(List.of("*2", "$%d".formatted(key.length()), key, "$1", "a"), response);
+    }
+
+
     static class Executor<V> implements Runnable {
         private final NetworkCall<V> runnable;
         volatile LocalDateTime finishedAt;

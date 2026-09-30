@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -18,6 +20,11 @@ sealed interface DataPersistency {
 
 sealed interface Value {
 
+}
+
+@FunctionalInterface
+interface TimeoutAware<T, V> {
+    V apply(T value) throws TimeoutException, InterruptedException, ExecutionException;
 }
 
 final class Storage {
@@ -232,7 +239,7 @@ final class Storage {
     }
 
     @NonNull
-    public CompletableFuture<String> blockingPop(@NonNull String key) {
+    public FutureWithTimeoutCleanup<String> blockingPop(@NonNull String key) {
         var future = new CompletableFuture<String>();
         LOGGER.finer(() -> "Blocking pop operation for " + key);
         pops.compute(key, (_, acc) -> {
@@ -243,7 +250,20 @@ final class Storage {
             return acc;
         });
         doBlockingPop(key);
-        return future;
+        return new FutureWithTimeoutCleanup<>(future, () -> {
+            pops.compute(key, (aKey, awaiting) -> {
+                if (awaiting == null) {
+                    return null;
+                }
+                awaiting.remove(future);
+                if (awaiting.isEmpty()) {
+                    return null;
+                } else {
+                    return awaiting;
+                }
+            });
+        }
+        );
     }
 }
 
@@ -289,4 +309,15 @@ record Eternal(Value value) implements DataPersistency {
 }
 
 record ExpiredAt(Value value, long timestamp) implements DataPersistency {
+}
+
+record FutureWithTimeoutCleanup<T>(CompletableFuture<T> future, Runnable cleaningAction) {
+    T work(TimeoutAware<CompletableFuture<T>, T> operation) throws TimeoutException, InterruptedException, ExecutionException {
+        try {
+            return operation.apply(future);
+        } catch (TimeoutException e) {
+            cleaningAction.run();
+            throw e;
+        }
+    }
 }
