@@ -97,7 +97,7 @@ final class Storage {
                     });
                     return existing;
                 }
-                case StringValue _ -> {
+                default -> {
                     return existing;
                 }
             }
@@ -124,8 +124,8 @@ final class Storage {
             return null;
         }
         return switch (value) {
-            case ListValue _ -> throw new OperationAllowedOnlyForSingleElement();
             case StringValue stringValue -> stringValue.value();
+            default -> throw new OperationAllowedOnlyForSingleElement();
         };
     }
 
@@ -145,8 +145,8 @@ final class Storage {
             }
             var value = extractFrom(v);
             return switch (value) {
-                case ListValue _ -> throw CannotModifyType.cannotModifyFromList();
                 case StringValue _ -> data;
+                default -> throw CannotModifyType.cannotModifyFromList();
             };
         });
         Thread.ofVirtual().start(() -> doBlockingPop(key));
@@ -177,7 +177,7 @@ final class Storage {
                     wrapper.set(listValue.value().size());
                     yield v;
                 }
-                case StringValue _ -> throw CannotModifyType.cannotModifyFromElement();
+                default -> throw CannotModifyType.cannotModifyFromElement();
             };
         });
         Thread.ofVirtual().start(() -> doBlockingPop(key));
@@ -213,7 +213,7 @@ final class Storage {
         return switch (found) {
             case null -> 0;
             case ListValue list -> list.value().size();
-            case StringValue _ -> throw new OperationAllowedOnlyForLists();
+            default -> throw new OperationAllowedOnlyForLists();
         };
     }
 
@@ -247,7 +247,7 @@ final class Storage {
                     }
                     return existing;
                 }
-                case StringValue _ -> {
+                default -> {
                     throw new OperationAllowedOnlyForLists();
                 }
             }
