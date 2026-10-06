@@ -14,6 +14,23 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
+
+enum DataType {
+    STRING,
+    LIST,
+    NONE;
+
+    static DataType parse(@Nullable Value value) {
+        if (value == null) {
+            return NONE;
+        }
+        return switch (value) {
+            case ListValue _ -> LIST;
+            case StringValue _ -> STRING;
+        };
+    }
+}
+
 sealed interface DataPersistency {
 
 }
@@ -87,7 +104,9 @@ final class Storage {
         });
     }
 
-    String get(@NonNull String key) throws StorageException {
+    @Nullable
+    private static Value findValueFor(String key) {
+
         var found = db.computeIfPresent(key, (k, v) -> switch (v) {
             case Eternal eternal -> eternal;
             case ExpiredAt expiredAt -> System.currentTimeMillis() > expiredAt.timestamp() ? null : expiredAt;
@@ -95,11 +114,15 @@ final class Storage {
         if (found == null) {
             return null;
         }
+        return extractFrom(found);
 
-        var value = switch (found) {
-            case Eternal eternal -> eternal.value();
-            case ExpiredAt expiredAt -> expiredAt.value();
-        };
+    }
+
+    String get(@NonNull String key) throws StorageException {
+        var value = findValueFor(key);
+        if (value == null) {
+            return null;
+        }
         return switch (value) {
             case ListValue _ -> throw new OperationAllowedOnlyForSingleElement();
             case StringValue stringValue -> stringValue.value();
@@ -162,39 +185,33 @@ final class Storage {
     }
 
     public @NonNull List<String> sublist(@NonNull String key, int start, int stop) {
-        var found = db.get(key);
-        if (found == null) {
-            return List.of();
-        }
-        var data = extractFrom(found);
-        if (data instanceof StringValue) {
-            throw new OperationAllowedOnlyForLists();
-        } else if (data instanceof ListValue(List<String> values)) {
-            if (values.isEmpty()) {
-                return List.of();
+        var data = findValueFor(key);
+        return switch (data) {
+            case null -> List.of();
+            case ListValue(List<String> values) -> {
+                if (values.isEmpty()) {
+                    yield List.of();
+                }
+                var normalizedStart = normalizeIndex(values, start);
+                var normalizedStop = Math.min(normalizeIndex(values, stop) + 1, values.size());
+                LOGGER.finer(() -> "For " + key + " start = " + start + " normalized = " + normalizedStart + " stop = " + stop + " normalized = " + normalizedStop);
+                if (normalizedStart >= values.size()) {
+                    yield List.of();
+                }
+                if (normalizedStart > normalizedStop) {
+                    yield List.of();
+                } else {
+                    yield List.copyOf(values.subList(normalizedStart, normalizedStop));
+                }
             }
-            var normalizedStart = normalizeIndex(values, start);
-            var normalizedStop = Math.min(normalizeIndex(values, stop) + 1, values.size());
-            LOGGER.finer(() -> "For " + key + " start = " + start + " normalized = " + normalizedStart + " stop = " + stop + " normalized = " + normalizedStop);
-            if (normalizedStart >= values.size()) {
-                return List.of();
-            }
-            if (normalizedStart > normalizedStop) {
-                return List.of();
-            } else {
-                return List.copyOf(values.subList(normalizedStart, normalizedStop));
-            }
-        } else {
-            throw new OperationAllowedOnlyForLists();
-        }
+            default -> throw new OperationAllowedOnlyForLists();
+        };
     }
 
     public int lengthOf(@NonNull String key) {
-        var found = db.get(key);
-        if (found == null) {
-            return 0;
-        }
-        return switch (extractFrom(found)) {
+        var found = findValueFor(key);
+        return switch (found) {
+            case null -> 0;
             case ListValue list -> list.value().size();
             case StringValue _ -> throw new OperationAllowedOnlyForLists();
         };
@@ -264,6 +281,14 @@ final class Storage {
             });
         }
         );
+    }
+
+    public DataType type(String key) {
+        var wrapped = findValueFor(key);
+        if (wrapped == null) {
+            return DataType.NONE;
+        }
+        return DataType.parse(wrapped);
     }
 }
 

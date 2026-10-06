@@ -63,6 +63,7 @@ class RedisServerBLPOPIntegrationTest {
         var blpop2 = new Executor<>(() -> SocketTimeout.with(() -> {
             try {
                 countdownLatch.await();
+                TimeUnit.MILLISECONDS.sleep(10); //not fun but with virtual threads needed, in some situation even if order will be correct it does not mean that it will be processed in this order.
             } catch (InterruptedException e) {
                 LOGGER.log(Level.SEVERE, "on blpop2", e);
             }
