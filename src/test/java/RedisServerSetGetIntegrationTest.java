@@ -50,4 +50,34 @@ class RedisServerSetGetIntegrationTest {
         response = SharedRedisServer.run("GET %s".formatted(key));
         assertEquals(List.of("$-1"), response);
     }
+
+    @Test
+    void getWithoutArgumentsRespondsWithError() throws IOException {
+        var response = SharedRedisServer.run("GET");
+        assertEquals(List.of("-ERR wrong number of arguments for 'get' command"), response);
+    }
+
+    @Test
+    void getWithTooManyArgumentsRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("GET %s extra".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'get' command"), response);
+    }
+
+    @Test
+    void setWithoutArgumentsRespondsWithError() throws IOException {
+        var response = SharedRedisServer.run("SET");
+        assertEquals(List.of("-ERR wrong number of arguments for 'SET' command"), response);
+    }
+
+    @Test
+    void setWithMissingValueRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("SET %s".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'SET' command"), response);
+    }
+
+    @Test
+    void setWithNonNumericExpiryRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("SET %s X EX abc".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR syntax error"), response);
+    }
 }

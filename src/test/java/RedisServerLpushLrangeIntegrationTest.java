@@ -46,4 +46,10 @@ class RedisServerLpushLrangeIntegrationTest {
         assertEquals(List.of("*3", "$1", "c", "$1", "a", "$1", "b"), response);
     }
 
+    @Test
+    void lPushWithoutValuesRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LPUSH %s".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'LPUSH' command"), response);
+    }
+
 }

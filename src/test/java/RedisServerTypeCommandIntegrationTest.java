@@ -44,4 +44,16 @@ class RedisServerTypeCommandIntegrationTest {
         assertEquals(List.of("+list"), response);
     }
 
+    @Test
+    void typeWithoutArgumentsRespondsWithError() throws IOException {
+        var response = SharedRedisServer.run("TYPE");
+        assertEquals(List.of("-ERR wrong number of arguments for 'TYPE' command"), response);
+    }
+
+    @Test
+    void typeWithTooManyArgumentsRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("TYPE %s extra".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'TYPE' command"), response);
+    }
+
 }

@@ -24,4 +24,16 @@ class RedisServerLLenIntegrationTest {
         assertEquals(List.of(":3"), response);
     }
 
+    @Test
+    void llenWithoutArgumentsRespondsWithError() throws IOException {
+        var response = SharedRedisServer.run("LLEN");
+        assertEquals(List.of("-ERR wrong number of arguments for 'LLEN' command"), response);
+    }
+
+    @Test
+    void llenWithTooManyArgumentsRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LLEN %s extra".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'LLEN' command"), response);
+    }
+
 }

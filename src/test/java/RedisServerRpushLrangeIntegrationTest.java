@@ -95,4 +95,28 @@ class RedisServerRpushLrangeIntegrationTest {
         var response = SharedRedisServer.run("LRANGE %s 0 -1".formatted(SharedRedisServer.key(testInfo)));
         assertEquals(List.of("*0"), response);
     }
+
+    @Test
+    void rpushWithoutValuesRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("RPUSH %s".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'RPUSH' command"), response);
+    }
+
+    @Test
+    void lRangeWithoutStartAndStopRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LRANGE %s".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'LRANGE' command"), response);
+    }
+
+    @Test
+    void lRangeWithoutStopRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LRANGE %s 0".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'LRANGE' command"), response);
+    }
+
+    @Test
+    void lRangeWithNonNumericRangeRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LRANGE %s a b".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-WRONGTYPE Both start and end have to be numbers"), response);
+    }
 }

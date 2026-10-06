@@ -137,6 +137,24 @@ class RedisServerBLPOPIntegrationTest {
     }
 
 
+    @Test
+    void blpopWithoutArgumentsRespondsWithError() throws IOException {
+        var response = SharedRedisServer.run("BLPOP");
+        assertEquals(List.of("-ERR wrong number of arguments for 'BLPOP' command"), response);
+    }
+
+    @Test
+    void blpopWithoutTimeoutRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("BLPOP %s".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'BLPOP' command"), response);
+    }
+
+    @Test
+    void blpopWithNonNumericTimeoutRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("BLPOP %s abc".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-WRONGTYPE timeout should be 0 or positive"), response);
+    }
+
     static class Executor<V> implements Runnable {
         private final NetworkCall<V> runnable;
         volatile LocalDateTime finishedAt;

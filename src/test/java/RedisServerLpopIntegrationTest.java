@@ -69,4 +69,22 @@ class RedisServerLpopIntegrationTest {
         assertEquals(List.of(":0"), response);
     }
 
+    @Test
+    void lpopWithoutArgumentsRespondsWithError() throws IOException {
+        var response = SharedRedisServer.run("LPOP");
+        assertEquals(List.of("-ERR wrong number of arguments for 'LPOP' command"), response);
+    }
+
+    @Test
+    void lpopWithTooManyArgumentsRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LPOP %s 1 extra".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-ERR wrong number of arguments for 'LPOP' command"), response);
+    }
+
+    @Test
+    void lpopWithNonNumericCountRespondsWithError(TestInfo testInfo) throws IOException {
+        var response = SharedRedisServer.run("LPOP %s xyz".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("-WRONGTYPE Optional number argument has to be numeric greater or equal than 1"), response);
+    }
+
 }
