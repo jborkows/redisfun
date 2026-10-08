@@ -52,8 +52,7 @@
                 </configuration>
                 <executions>
                     <execution>
-                        <!-- Bound to the test phase so plain `mvn test` runs unit + integration tests -->
-                        <phase>test</phase>
+                        <!-- Runs integration tests during `mvn verify`; `mvn test` runs unit tests only -->
                         <goals>
                             <goal>integration-test</goal>
                             <goal>verify</goal>
