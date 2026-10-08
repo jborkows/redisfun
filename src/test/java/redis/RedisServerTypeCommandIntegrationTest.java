@@ -58,4 +58,12 @@ class RedisServerTypeCommandIntegrationTest {
         assertEquals(List.of("-ERR wrong number of arguments for 'TYPE' command"), response);
     }
 
+    @Test
+    void typeForStream(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD stream_key entryId key value key2 value2".replaceAll("stream_key", key));
+        var response = SharedRedisServer.run("TYPE %s".formatted(SharedRedisServer.key(testInfo)));
+        assertEquals(List.of("+stream"), response);
+    }
+
 }

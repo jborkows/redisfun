@@ -20,6 +20,7 @@ public final class Type {
         var displayableType = switch (type) {
             case STRING -> "string";
             case LIST -> "list";
+            case STREAM -> "stream";
             case NONE -> "none";
         };
         return List.of(Messages.simpleMessage(displayableType));

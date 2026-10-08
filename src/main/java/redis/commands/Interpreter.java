@@ -6,6 +6,7 @@ import redis.storage.StorageException;
 import redis.storage.StorageException.CannotModifyType;
 import redis.storage.StorageException.OperationAllowedOnlyForLists;
 import redis.storage.StorageException.OperationAllowedOnlyForSingleElement;
+import redis.storage.StorageException.OperationAllowedOnlyForStreams;
 
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +27,7 @@ public final class Interpreter {
                 case Lpop.NAME -> Lpop.execute(command.args());
                 case Blpop.NAME -> Blpop.execute(command.args());
                 case Type.NAME -> Type.execute(command.args());
+                case XAdd.NAME -> XAdd.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
             };
         } catch (StorageException storageException) {
@@ -37,6 +39,8 @@ public final class Interpreter {
         return switch (storageException) {
             case OperationAllowedOnlyForLists _ ->
                     Messages.wrongType("Operation %s allowed only for lists".formatted(commandName));
+            case OperationAllowedOnlyForStreams _ ->
+                    Messages.wrongType("Operation %s allowed only for streams".formatted(commandName));
             case OperationAllowedOnlyForSingleElement _ ->
                     Messages.wrongType("Operation %s allowed only for single element".formatted(commandName));
             case CannotModifyType cannotModifyType ->

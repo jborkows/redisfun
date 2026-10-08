@@ -1,10 +1,9 @@
 package redis.storage;
 
-import redis.storage.DataPersistency.ExpiredAt;
-import redis.storage.DataPersistency.Eternal;
-
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import redis.storage.DataPersistency.Eternal;
+import redis.storage.DataPersistency.ExpiredAt;
 
 import java.time.Duration;
 import java.util.List;
@@ -18,6 +17,7 @@ public final class Storage {
 
     private final Strings strings = new Strings(this);
     private final Lists lists = new Lists(this);
+    private final Streams streams = new Streams(this);
 
     private final Map<String, DataPersistency> db = new ConcurrentHashMap<>();
 
@@ -32,12 +32,16 @@ public final class Storage {
         };
     }
 
-    @Nullable
-    Value lookup(@NonNull String key) {
-        var found = db.computeIfPresent(key, (_, v) -> switch (v) {
+    private static @Nullable DataPersistency persistency(DataPersistency v) {
+        return switch (v) {
             case Eternal eternal -> eternal;
             case ExpiredAt expiredAt -> System.currentTimeMillis() > expiredAt.timestamp() ? null : expiredAt;
-        });
+        };
+    }
+
+    @Nullable
+    Value lookup(@NonNull String key) {
+        var found = db.computeIfPresent(key, (_, v) -> persistency(v));
         if (found == null) {
             return null;
         }
@@ -49,14 +53,21 @@ public final class Storage {
      * {@code remapping}. This is the unit of atomicity for every mutating operation.
      */
     void mutate(@NonNull String key, @NonNull BiFunction<String, DataPersistency, DataPersistency> remapping) {
-        db.compute(key, remapping);
+        db.compute(key, (aKey, value) -> {
+            if (value == null) {
+                return remapping.apply(key, null);
+            }
+            var v = persistency(value);
+            return remapping.apply(aKey, v);
+        });
     }
 
     /**
      * Like {@link #mutate}, but only when the key is currently present.
+     * Expired entries are treated as absent.
      */
     void mutateIfPresent(@NonNull String key, @NonNull BiFunction<String, DataPersistency, DataPersistency> remapping) {
-        db.computeIfPresent(key, remapping);
+        db.computeIfPresent(key, (aKey, value) -> remapping.apply(aKey, persistency(value)));
     }
 
     @NonNull
@@ -102,5 +113,16 @@ public final class Storage {
     @NonNull
     public FutureWithTimeoutCleanup<String> blockingPop(@NonNull String key) {
         return lists.blockingPop(key);
+    }
+
+    /**
+     *
+     * @param streamKey name of stream
+     * @param entry     entry added to stream identified with streamKey
+     * @return entryId
+     */
+    @NonNull
+    public String add(String streamKey, Entry entry) {
+        return streams.add(streamKey, entry);
     }
 }

@@ -9,4 +9,7 @@ sealed interface Value {
 
     record ListValue(List<String> value) implements Value {
     }
+
+    record StreamValue(List<Entry> value) implements Value {
+    }
 }
