@@ -1,7 +1,5 @@
 package redis;
 
-import redis.commands.Effect.PrintText;
-
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -117,12 +115,11 @@ public final class RedisServer implements AutoCloseable {
             var dispatcher = new Dispatcher();
             while ((bytesRead = clientSocket.getInputStream().read(buffer)) != -1) {
                 var effects = dispatcher.process(buffer, bytesRead);
+                var outputStream = clientSocket.getOutputStream();
                 for (var effect : effects) {
-                    switch (effect) {
-                        case PrintText printText ->
-                                clientSocket.getOutputStream().write((printText.text() + SEPARATOR).getBytes(StandardCharsets.ISO_8859_1));
-                    }
+                    outputStream.write(effect.text().getBytes(StandardCharsets.ISO_8859_1));
                 }
+                outputStream.flush();
             }
         } catch (IOException e) {
             logger.severe("IOException: " + e.getMessage());

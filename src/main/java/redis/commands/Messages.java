@@ -1,10 +1,6 @@
 package redis.commands;
 
-import redis.commands.Effect.PrintText;
-
-import java.util.Collection;
 import java.util.List;
-import java.util.stream.Stream;
 
 final class Messages {
 
@@ -12,42 +8,35 @@ final class Messages {
     }
 
     static Effect respInteger(long value) {
-        return new PrintText(":" + value);
-    }
-
-    static Effect respLength(long value) {
-        return new PrintText("*" + value);
+        return new Effect.Integer(value);
     }
 
     static Effect simpleMessage(String message) {
-        return new PrintText("+" + message);
+        return new Effect.SimpleString(message);
     }
 
     static List<Effect> bulkMessage(String message) {
-        return List.of(new PrintText("$" + message.length()), new PrintText(message));
+        return List.of(new Effect.BulkString(message));
     }
 
     static List<Effect> bulkMessages(List<String> messages) {
-        return Stream.concat(
-                Stream.of(respLength(messages.size())),
-                messages.stream().map(Messages::bulkMessage).flatMap(Collection::stream)
-        ).toList();
+        return List.of(new Effect.Array(messages.stream().<Effect>map(Effect.BulkString::new).toList()));
     }
 
     static Effect nilMessage() {
-        return new PrintText("$-1");
+        return new Effect.NullBulk();
     }
 
     static Effect nilArray() {
-        return new PrintText("*-1");
+        return new Effect.NullArray();
     }
 
     static List<Effect> errorMessage(String message) {
-        return List.of(new PrintText("-ERR " + message));
+        return List.of(new Effect.Error(message));
     }
 
     static List<Effect> wrongType(String message) {
-        return List.of(new PrintText("-WRONGTYPE " + message));
+        return List.of(new Effect.WrongType(message));
     }
 
     static List<Effect> wrongNumberOfArguments(String commandName) {
@@ -56,5 +45,9 @@ final class Messages {
 
     static List<Effect> syntaxError() {
         return errorMessage("syntax error");
+    }
+
+    static List<Effect> array(Effect... effects) {
+        return List.of(new Effect.Array(List.of(effects)));
     }
 }
