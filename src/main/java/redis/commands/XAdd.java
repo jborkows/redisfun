@@ -15,7 +15,7 @@ public final class XAdd {
     private XAdd() {
     }
 
-    public static List<Effect> execute(List<String> args) {
+    public static Effect execute(List<String> args) {
         if ((args.size() < 2)) {
             return Messages.wrongNumberOfArguments(NAME);
         }

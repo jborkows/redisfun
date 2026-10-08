@@ -4,54 +4,56 @@ import java.util.List;
 
 public sealed interface Effect {
 
+    String CRLF = "\r\n";
+
     String text();
 
     record SimpleString(String value) implements Effect {
         @Override
         public String text() {
-            return "+" + value + "\r\n";
+            return "+" + value + CRLF;
         }
     }
 
     record Error(String message) implements Effect {
         @Override
         public String text() {
-            return "-ERR " + message + "\r\n";
+            return "-ERR " + message + CRLF;
         }
     }
 
     record WrongType(String message) implements Effect {
         @Override
         public String text() {
-            return "-WRONGTYPE " + message + "\r\n";
+            return "-WRONGTYPE " + message + CRLF;
         }
     }
 
     record Integer(long value) implements Effect {
         @Override
         public String text() {
-            return ":" + value + "\r\n";
+            return ":" + value + CRLF;
         }
     }
 
     record BulkString(String value) implements Effect {
         @Override
         public String text() {
-            return "$" + value.length() + "\r\n" + value + "\r\n";
+            return "$" + value.length() + CRLF + value + CRLF;
         }
     }
 
     record NullBulk() implements Effect {
         @Override
         public String text() {
-            return "$-1\r\n";
+            return "$-1" + CRLF;
         }
     }
 
     record NullArray() implements Effect {
         @Override
         public String text() {
-            return "*-1\r\n";
+            return "*-1" + CRLF;
         }
     }
 
@@ -63,7 +65,7 @@ public sealed interface Effect {
         @Override
         public String text() {
             var builder = new StringBuilder();
-            builder.append("*").append(elements.size()).append("\r\n");
+            builder.append("*").append(elements.size()).append(CRLF);
             for (var element : elements) {
                 builder.append(element.text());
             }

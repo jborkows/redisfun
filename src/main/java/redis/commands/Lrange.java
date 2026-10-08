@@ -11,7 +11,7 @@ public final class Lrange {
     private Lrange() {
     }
 
-    public static List<Effect> execute(List<String> args) {
+    public static Effect execute(List<String> args) {
         if (args.size() != 3) {
             return Messages.wrongNumberOfArguments(NAME);
         }

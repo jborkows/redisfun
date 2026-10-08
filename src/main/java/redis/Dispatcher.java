@@ -5,7 +5,6 @@ import redis.commands.Interpreter;
 import redis.protocol.*;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -20,7 +19,6 @@ class Dispatcher {
         var commands = parseTokens(tokens);
         return commands.stream()
                 .map(Interpreter::interpret)
-                .flatMap(Collection::stream)
                 .toList();
     }
 

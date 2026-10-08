@@ -12,7 +12,7 @@ public final class Lpop {
     private Lpop() {
     }
 
-    public static List<Effect> execute(List<String> args) {
+    public static Effect execute(List<String> args) {
         if (!(args.size() == 1 || args.size() == 2)) {
             return Messages.wrongNumberOfArguments(NAME);
         }
@@ -25,9 +25,9 @@ public final class Lpop {
             var element = Storage.STORAGE.pop(key, howMany);
             if (element == null) {
                 if (requestingSingleElementPop(args)) {
-                    return List.of(Messages.nilMessage());
+                    return Messages.nilMessage();
                 } else {
-                    return List.of(Messages.nilArray());
+                    return Messages.nilArray();
                 }
             } else if (element.size() == 1 && requestingSingleElementPop(args)) {
                 return Messages.bulkMessage(element.getFirst());

@@ -15,7 +15,7 @@ public final class Blpop {
     private Blpop() {
     }
 
-    public static List<Effect> execute(List<String> args) {
+    public static Effect execute(List<String> args) {
         if (args.size() != 2) {
             return Messages.wrongNumberOfArguments(NAME);
         }
@@ -44,7 +44,7 @@ public final class Blpop {
         } catch (NumberFormatException e) {
             return Messages.wrongType("timeout should be 0 or positive");
         } catch (TimeoutException e) {
-            return List.of(Messages.nilArray());
+            return Messages.nilArray();
         }
     }
 }

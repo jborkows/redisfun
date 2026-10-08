@@ -12,11 +12,11 @@ import java.util.List;
 import java.util.Locale;
 
 public final class Interpreter {
-    public static List<Effect> interpret(Command command) {
+    public static Effect interpret(Command command) {
         var commandName = command.name().toUpperCase(Locale.ROOT);
         try {
             return switch (commandName) {
-                case "PING" -> List.of(Messages.simpleMessage("PONG"));
+                case "PING" -> Messages.simpleMessage("PONG");
                 case "ECHO" -> echo(command.args());
                 case "GET" -> getCommand(command.args());
                 case SetCommand.NAME -> SetCommand.execute(command.args());
@@ -35,7 +35,7 @@ public final class Interpreter {
         }
     }
 
-    private static List<Effect> parseException(String commandName, StorageException storageException) {
+    private static Effect parseException(String commandName, StorageException storageException) {
         return switch (storageException) {
             case OperationAllowedOnlyForLists _ ->
                     Messages.wrongType("Operation %s allowed only for lists".formatted(commandName));
@@ -49,19 +49,19 @@ public final class Interpreter {
         };
     }
 
-    private static List<Effect> getCommand(List<String> args) {
+    private static Effect getCommand(List<String> args) {
         if (args.size() != 1) {
             return Messages.wrongNumberOfArguments("get");
         }
         var found = Storage.STORAGE.get(args.getFirst());
         if (found == null) {
-            return List.of(Messages.nilMessage());
+            return Messages.nilMessage();
         } else {
             return Messages.bulkMessage(found);
         }
     }
 
-    private static List<Effect> echo(List<String> args) {
+    private static Effect echo(List<String> args) {
         if (args.size() != 1) {
             return Messages.wrongNumberOfArguments("echo");
         }

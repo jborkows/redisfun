@@ -17,7 +17,7 @@ public final class SetCommand {
     private SetCommand() {
     }
 
-    public static List<Effect> execute(List<String> args) {
+    public static Effect execute(List<String> args) {
         if (args.size() < 2) {
             return Messages.wrongNumberOfArguments(NAME);
         }
@@ -33,7 +33,7 @@ public final class SetCommand {
         } else {
             Storage.STORAGE.put(key, value);
         }
-        return List.of(Messages.simpleMessage("OK"));
+        return Messages.simpleMessage("OK");
     }
 
     private static @Nullable Duration expiryDuration(List<String> options) {

@@ -11,7 +11,7 @@ public final class Type {
     private Type() {
     }
 
-    public static List<Effect> execute(List<String> args) {
+    public static Effect execute(List<String> args) {
         if (args.size() != 1) {
             return Messages.wrongNumberOfArguments(NAME);
         }
@@ -23,6 +23,6 @@ public final class Type {
             case STREAM -> "stream";
             case NONE -> "none";
         };
-        return List.of(Messages.simpleMessage(displayableType));
+        return Messages.simpleMessage(displayableType);
     }
 }

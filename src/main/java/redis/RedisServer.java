@@ -1,5 +1,7 @@
 package redis;
 
+import redis.commands.Effect;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -9,7 +11,6 @@ import java.util.logging.Logger;
 
 public final class RedisServer implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(RedisServer.class.getName());
-    private static final String SEPARATOR = "\r\n";
     private static final int DEFAULT_MAX_CLIENTS = Integer.getInteger("redis.maxclients", 1000);
     private final int requestedPort;
     private final Semaphore clientSlots;
@@ -98,7 +99,7 @@ public final class RedisServer implements AutoCloseable {
     private void reject(Socket clientSocket) {
         try (clientSocket) {
             clientSocket.getOutputStream().write(
-                    ("-ERR max number of clients reached" + SEPARATOR)
+                    ("-ERR max number of clients reached" + Effect.CRLF)
                             .getBytes(StandardCharsets.ISO_8859_1));
             clientSocket.getOutputStream().flush();
         } catch (IOException e) {
