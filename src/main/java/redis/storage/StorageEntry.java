@@ -23,34 +23,8 @@ record StorageEntry(long milliseconds, long sequenceNumber, @NonNull List<Tuple>
         if ("0-0".equals(entry.id())) {
             throw new StorageException.StreamOperationsException.StreamKeyCannotBe00();
         }
-        var idParts = entry.id().split("-", -1);
-        if (idParts.length != 2) {
-            throw new StorageException.StreamOperationsException.InvalidId();
-        }
         try {
-            var firstPart = idParts[0];
-            var secondPart = idParts[1];
-            var milliseconds = Long.parseLong(firstPart);
-            long sequenceNumber;
-            if (SPECIAL_ID.equals(secondPart)) {
-                if (lastOne == null) {
-                    if (milliseconds == 0) {
-                        sequenceNumber = 1;
-                    } else {
-                        sequenceNumber = 0;
-                    }
-                } else {
-                    if (lastOne.milliseconds() == milliseconds) {
-                        sequenceNumber = lastOne.sequenceNumber() + 1;
-                    } else {
-                        sequenceNumber = milliseconds == 0 ? 1 : milliseconds;
-                    }
-                }
-            } else {
-                sequenceNumber = Long.parseLong(secondPart);
-            }
-            var storable = new StorageEntry(milliseconds, sequenceNumber, entry.tuples());
-
+            var storable = convertParts(entry, lastOne);
             if (lastOne == null) {
                 return storable;
             }
@@ -65,6 +39,35 @@ record StorageEntry(long milliseconds, long sequenceNumber, @NonNull List<Tuple>
         } catch (NumberFormatException e) {
             throw new StorageException.StreamOperationsException.InvalidId();
         }
+    }
+
+    private static @NonNull StorageEntry convertParts(@NonNull Entry entry, @Nullable StorageEntry lastOne) {
+        var idParts = entry.id().split("-", -1);
+        if (idParts.length != 2) {
+            throw new StorageException.StreamOperationsException.InvalidId();
+        }
+        var firstPart = idParts[0];
+        var secondPart = idParts[1];
+        var milliseconds = Long.parseLong(firstPart);
+        long sequenceNumber;
+        if (SPECIAL_ID.equals(secondPart)) {
+            if (lastOne == null) {
+                if (milliseconds == 0) {
+                    sequenceNumber = 1;
+                } else {
+                    sequenceNumber = 0;
+                }
+            } else {
+                if (lastOne.milliseconds() == milliseconds) {
+                    sequenceNumber = lastOne.sequenceNumber() + 1;
+                } else {
+                    sequenceNumber = milliseconds == 0 ? 1 : 0;
+                }
+            }
+        } else {
+            sequenceNumber = Long.parseLong(secondPart);
+        }
+        return new StorageEntry(milliseconds, sequenceNumber, entry.tuples());
     }
 
     private static @NonNull StorageEntry convertSpecialCase(Entry entry, @Nullable StorageEntry lastOne) {
