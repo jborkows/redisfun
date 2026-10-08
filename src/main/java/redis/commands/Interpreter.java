@@ -6,7 +6,7 @@ import redis.storage.StorageException;
 import redis.storage.StorageException.CannotModifyType;
 import redis.storage.StorageException.OperationAllowedOnlyForLists;
 import redis.storage.StorageException.OperationAllowedOnlyForSingleElement;
-import redis.storage.StorageException.OperationAllowedOnlyForStreams;
+import redis.storage.StorageException.StreamOperationsException.OperationAllowedOnlyForStreams;
 
 import java.util.List;
 import java.util.Locale;

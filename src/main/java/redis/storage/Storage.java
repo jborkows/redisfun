@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import redis.storage.DataPersistency.Eternal;
 import redis.storage.DataPersistency.ExpiredAt;
+import redis.storage.StorageException.StreamOperationsException;
 
 import java.time.Duration;
 import java.util.List;
@@ -122,7 +123,7 @@ public final class Storage {
      * @return entryId
      */
     @NonNull
-    public String add(String streamKey, Entry entry) {
+    public String add(String streamKey, Entry entry) throws StreamOperationsException {
         return streams.add(streamKey, entry);
     }
 }

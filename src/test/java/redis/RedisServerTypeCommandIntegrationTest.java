@@ -61,7 +61,7 @@ class RedisServerTypeCommandIntegrationTest {
     @Test
     void typeForStream(TestInfo testInfo) throws IOException {
         var key = SharedRedisServer.key(testInfo);
-        SharedRedisServer.run("XADD stream_key entryId key value key2 value2".replaceAll("stream_key", key));
+        SharedRedisServer.run("XADD stream_key 1-1 key value key2 value2".replaceAll("stream_key", key));
         var response = SharedRedisServer.run("TYPE %s".formatted(SharedRedisServer.key(testInfo)));
         assertEquals(List.of("+stream"), response);
     }

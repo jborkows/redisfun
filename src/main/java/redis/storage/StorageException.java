@@ -10,8 +10,20 @@ public sealed abstract class StorageException extends RuntimeException {
 
     }
 
-    public static final class OperationAllowedOnlyForStreams extends StorageException {
 
+    public static sealed abstract class StreamOperationsException extends StorageException {
+
+        public static final class OperationAllowedOnlyForStreams extends StreamOperationsException {
+        }
+
+        public static final class StreamKeyMustBeGreaterThanLast extends StreamOperationsException {
+        }
+
+        public static final class InvalidId extends StreamOperationsException {
+        }
+
+        public static final class StreamKeyCannotBe00 extends StreamOperationsException {
+        }
     }
 
     public static final class OnlyPositiveValues extends StorageException {
