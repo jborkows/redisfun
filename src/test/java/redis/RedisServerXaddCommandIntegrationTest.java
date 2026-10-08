@@ -85,4 +85,34 @@ class RedisServerXaddCommandIntegrationTest {
         assertFalse(response.get(1).startsWith("-ERR"));
     }
 
+    @Test
+    void partiallyGeneratedIdWhenEmpty(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.run("XADD %s 1-* foo bar".formatted(key));
+        assertEquals(List.of("$" + "1-0".length(), "1-0"), response);
+    }
+
+    @Test
+    void partiallyGeneratedIdWhenAlreadyExists(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 1-5 foo bar".formatted(key));
+        var response = SharedRedisServer.run("XADD %s 1-* foo bar".formatted(key));
+        assertEquals(List.of("$" + "1-6".length(), "1-6"), response);
+    }
+
+    @Test
+    void partiallyGeneratedIdWhenAlreadyExistsForZero(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-* foo bar".formatted(key));
+        var response = SharedRedisServer.run("XADD %s 0-* foo bar".formatted(key));
+        assertEquals(List.of("$" + "0-2".length(), "0-2"), response);
+    }
+
+    @Test
+    void partiallyGeneratedWithSkip(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-* foo bar".formatted(key));
+        var response = SharedRedisServer.run("XADD %s 1-* foo bar".formatted(key));
+        assertEquals(List.of("$" + "1-0".length(), "1-0"), response);
+    }
 }
