@@ -11,6 +11,9 @@ record StorageEntryKey(long milliseconds, long sequenceNumber) implements Compar
             .thenComparingLong(StorageEntryKey::sequenceNumber);
 
     public static StorageEntryKey parse(@NonNull String id) {
+        if ("-".equals(id)) {
+            return new StorageEntryKey(0, 0);
+        }
         var parts = id.split("-", -1);
         if (parts.length != 2) {
             throw new StorageException.StreamOperationsException.InvalidId();

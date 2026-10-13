@@ -49,6 +49,24 @@ class RedisServerXRangeIntegrationTest {
     }
 
     @Test
+    void xrangeReturnsEntriesWithSimpleSequentialIdsForMinus(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-1 foo bar".formatted(key));
+        SharedRedisServer.run("XADD %s 0-2 bar baz".formatted(key));
+        SharedRedisServer.run("XADD %s 0-3 baz foo".formatted(key));
+
+        var response = SharedRedisServer.run("XRANGE %s - 0-2".formatted(key));
+
+        assertEquals(List.of(
+                "*2",
+                "*2", "$3", "0-1",
+                "*2", "$3", "foo", "$3", "bar",
+                "*2", "$3", "0-2",
+                "*2", "$3", "bar", "$3", "baz"
+        ), response);
+    }
+
+    @Test
     void xrangeWithoutArgumentsRespondsWithError() throws IOException {
         var response = SharedRedisServer.run("XRANGE");
         assertEquals(List.of("-ERR wrong number of arguments for 'XRANGE' command"), response);
