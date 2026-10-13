@@ -5,11 +5,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Formatter;
-import java.util.logging.Level;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
+import java.util.logging.*;
 
 /**
  * Central place for JUL setup, shared by {@code Main} and integration tests.
@@ -26,7 +22,7 @@ public final class Logging {
      * A system property is used so it never clashes with CLI args like {@code --port}.
      */
     public static void configureFromSystemProperty() {
-        configure(System.getProperty("log.level", "debug"));
+        configure(System.getProperty("log.level", "info"));
     }
 
     /**
@@ -66,15 +62,6 @@ public final class Logging {
         private static final DateTimeFormatter TIMESTAMP_FORMAT =
                 DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
-        @Override
-        public String format(LogRecord record) {
-            var timestamp = LocalDateTime.ofInstant(
-                            Instant.ofEpochMilli(record.getMillis()), ZoneId.systemDefault())
-                    .format(TIMESTAMP_FORMAT);
-            return "%s [%-5s] [thread-%d] %s%n".formatted(
-                    timestamp, displayName(record.getLevel()), record.getLongThreadID(), record.getMessage());
-        }
-
         private static String displayName(Level level) {
             if (level == Level.FINE) {
                 return "DEBUG";
@@ -83,6 +70,15 @@ public final class Logging {
                 return "ERROR";
             }
             return level.getName();
+        }
+
+        @Override
+        public String format(LogRecord record) {
+            var timestamp = LocalDateTime.ofInstant(
+                            Instant.ofEpochMilli(record.getMillis()), ZoneId.systemDefault())
+                    .format(TIMESTAMP_FORMAT);
+            return "%s [%-5s] [thread-%d] %s%n".formatted(
+                    timestamp, displayName(record.getLevel()), record.getLongThreadID(), record.getMessage());
         }
     }
 }
