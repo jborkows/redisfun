@@ -7,6 +7,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -87,6 +88,15 @@ class RedisServerLpopIntegrationTest {
     void lpopWithNonNumericCountRespondsWithError(TestInfo testInfo) throws IOException {
         var response = SharedRedisServer.run("LPOP %s xyz".formatted(SharedRedisServer.key(testInfo)));
         assertEquals(List.of("-WRONGTYPE Optional number argument has to be numeric greater or equal than 1"), response);
+    }
+
+    @Test
+    void lpopAfterKeyExpiredShouldReturnNullBulkString(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("SET %s v PX 100".formatted(key));
+        TimeUnit.SECONDS.sleep(1);
+        var response = SharedRedisServer.run("LPOP %s".formatted(key));
+        assertEquals(List.of("$-1"), response);
     }
 
 }

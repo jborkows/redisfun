@@ -50,4 +50,8 @@ final class Messages {
     static Effect array(Effect... effects) {
         return new Effect.Array(List.of(effects));
     }
+
+    static Effect array(List<Effect> effects) {
+        return new Effect.Array(effects);
+    }
 }

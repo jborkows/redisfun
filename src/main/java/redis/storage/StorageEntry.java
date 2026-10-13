@@ -3,13 +3,11 @@ package redis.storage;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.util.Comparator;
 import java.util.List;
 
-record StorageEntry(long milliseconds, long sequenceNumber, @NonNull List<Tuple> tuples) {
+record StorageEntry(@NonNull StorageEntryKey key, @NonNull List<Tuple> tuples) {
 
     private static final String SPECIAL_ID = "*";
-    private static final Comparator<StorageEntry> KEY_COMPARATOR = Comparator.comparingLong(StorageEntry::milliseconds).thenComparing(StorageEntry::sequenceNumber);
 
     public static StorageEntry convert(Entry entry, @Nullable StorageEntry lastOne) throws StorageException.StreamOperationsException {
         if (SPECIAL_ID.equals(entry.id())) {
@@ -58,8 +56,8 @@ record StorageEntry(long milliseconds, long sequenceNumber, @NonNull List<Tuple>
                     sequenceNumber = 0;
                 }
             } else {
-                if (lastOne.milliseconds() == milliseconds) {
-                    sequenceNumber = lastOne.sequenceNumber() + 1;
+                if (lastOne.key.milliseconds() == milliseconds) {
+                    sequenceNumber = lastOne.key.sequenceNumber() + 1;
                 } else {
                     sequenceNumber = milliseconds == 0 ? 1 : 0;
                 }
@@ -67,7 +65,7 @@ record StorageEntry(long milliseconds, long sequenceNumber, @NonNull List<Tuple>
         } else {
             sequenceNumber = Long.parseLong(secondPart);
         }
-        return new StorageEntry(milliseconds, sequenceNumber, entry.tuples());
+        return new StorageEntry(new StorageEntryKey(milliseconds, sequenceNumber), entry.tuples());
     }
 
     private static @NonNull StorageEntry convertSpecialCase(Entry entry, @Nullable StorageEntry lastOne) {
@@ -75,20 +73,20 @@ record StorageEntry(long milliseconds, long sequenceNumber, @NonNull List<Tuple>
         long sequenceNumber;
         if (lastOne == null) {
             sequenceNumber = 0;
-        } else if (lastOne.milliseconds != timeStamp) {
+        } else if (lastOne.key.milliseconds() != timeStamp) {
             sequenceNumber = 0;
         } else {
-            sequenceNumber = lastOne.sequenceNumber + 1;
+            sequenceNumber = lastOne.key.sequenceNumber() + 1;
         }
-        return new StorageEntry(timeStamp, sequenceNumber, entry.tuples());
+        return new StorageEntry(new StorageEntryKey(timeStamp, sequenceNumber), entry.tuples());
     }
 
     public String id() {
-        return "%d-%d".formatted(milliseconds, sequenceNumber);
+        return key.id();
     }
 
     private int compareKey(StorageEntry other) {
-        return KEY_COMPARATOR.compare(this, other);
+        return key.compareTo(other.key);
     }
 
 }

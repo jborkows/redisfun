@@ -1,10 +1,12 @@
 package redis.storage;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.NullMarked;
 import redis.storage.StorageException.StreamOperationsException;
 import redis.storage.Value.StreamValue;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class Streams {
@@ -56,4 +58,14 @@ final class Streams {
         return StorageEntry.convert(entry, last);
     }
 
+    @NullMarked
+    public List<StorageEntry> range(String key, String start, String end) {
+        var snapshot = storage.readIfPresent(key, value -> List.copyOf(expect(value).value()));
+        if (snapshot == null || snapshot.isEmpty()) {
+            return List.of();
+        }
+        var startKey = StorageEntryKey.parse(start);
+        var endKey = StorageEntryKey.parse(end);
+        return snapshot.stream().filter(i -> i.key().compareTo(startKey) >= 0 && i.key().compareTo(endKey) <= 0).toList();
+    }
 }

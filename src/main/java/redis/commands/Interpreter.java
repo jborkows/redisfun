@@ -28,6 +28,7 @@ public final class Interpreter {
                 case Blpop.NAME -> Blpop.execute(command.args());
                 case Type.NAME -> Type.execute(command.args());
                 case XAdd.NAME -> XAdd.execute(command.args());
+                case XRange.NAME -> XRange.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
             };
         } catch (StorageException storageException) {

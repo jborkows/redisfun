@@ -1,6 +1,7 @@
 package redis.storage;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import redis.storage.DataPersistency.Eternal;
 import redis.storage.DataPersistency.ExpiredAt;
@@ -10,7 +11,9 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 public final class Storage {
 
@@ -64,11 +67,36 @@ public final class Storage {
     }
 
     /**
-     * Like {@link #mutate}, but only when the key is currently present.
-     * Expired entries are treated as absent.
+     * Like {@link #mutate}, but {@code remapping} runs only when a live (non-expired) entry
+     * is present. Expired entries are treated as absent: they are removed without invoking
+     * {@code remapping}, so the lambda never receives {@code null}.
      */
     void mutateIfPresent(@NonNull String key, @NonNull BiFunction<String, DataPersistency, DataPersistency> remapping) {
-        db.computeIfPresent(key, (aKey, value) -> remapping.apply(aKey, persistency(value)));
+        db.computeIfPresent(key, (aKey, value) -> {
+            var live = persistency(value);
+            return live == null ? null : remapping.apply(aKey, live);
+        });
+    }
+
+    /**
+     * Runs {@code reader} while holding the lock for {@code key}, but only when a live
+     * (non-expired) entry is present; expired entries are removed and treated as absent.
+     * Intended for read-only snapshots that must stay consistent with concurrent mutations.
+     *
+     * @return the reader's result, or {@code null} when the key is absent or expired
+     */
+    @NullMarked
+    <T> @Nullable T readIfPresent(String key, Function<Value, T> reader) {
+        var result = new AtomicReference<T>();
+        db.computeIfPresent(key, (aKey, value) -> {
+            var live = persistency(value);
+            if (live == null) {
+                return null;
+            }
+            result.set(reader.apply(extractFrom(live)));
+            return live;
+        });
+        return result.get();
     }
 
     @NonNull
@@ -125,5 +153,11 @@ public final class Storage {
     @NonNull
     public String add(String streamKey, Entry entry) throws StreamOperationsException {
         return streams.add(streamKey, entry);
+    }
+
+    @NullMarked
+    public List<Entry> range(String key, String start, String end) {
+        var found = streams.range(key, start, end);
+        return found.stream().map(i -> new Entry(i.id(), i.tuples())).toList();
     }
 }
