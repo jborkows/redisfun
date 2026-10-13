@@ -14,6 +14,9 @@ record StorageEntryKey(long milliseconds, long sequenceNumber) implements Compar
         if ("-".equals(id)) {
             return new StorageEntryKey(0, 0);
         }
+        if ("+".equals(id)) {
+            return new StorageEntryKey(Long.MAX_VALUE, Long.MAX_VALUE);
+        }
         var parts = id.split("-", -1);
         if (parts.length != 2) {
             throw new StorageException.StreamOperationsException.InvalidId();
