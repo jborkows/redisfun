@@ -19,7 +19,8 @@
     "review": {
       "description": "Review changes with Kimi K3",
       "template": "Review the current changes for correctness, bugs, missing tests, and style issues.",
-      "model": "opencode-go/kimi-k3"
+      "model": "opencode-go/kimi-k3",
+      "subagent": true
     }
   }
 }
