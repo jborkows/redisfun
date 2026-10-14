@@ -43,6 +43,11 @@ public final class Storage {
         };
     }
 
+    @NullMarked
+    private static List<Entry> intoEntries(List<StorageEntry> found) {
+        return found.stream().map(i -> new Entry(i.id(), i.tuples())).toList();
+    }
+
     @Nullable
     Value lookup(@NonNull String key) {
         var found = db.computeIfPresent(key, (_, v) -> persistency(v));
@@ -158,6 +163,11 @@ public final class Storage {
     @NullMarked
     public List<Entry> range(String key, String start, String end) {
         var found = streams.range(key, start, end);
-        return found.stream().map(i -> new Entry(i.id(), i.tuples())).toList();
+        return intoEntries(found);
+    }
+
+    public List<Entry> readStreamFrom(String key, String id) {
+        var found = streams.readSince(key, id);
+        return intoEntries(found);
     }
 }

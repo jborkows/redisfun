@@ -1,4 +1,6 @@
 *.jar
 target/
 .idea/
-opencode.json
+.classpath
+.project
+.settings

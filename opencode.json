@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "idea": {
+      "type": "remote",
+      "url": "http://127.0.0.1:64342/stream",
+      "headers": {
+        "IJ_MCP_SERVER_PROJECT_PATH": "/home/jborkows/projects/codecrafters-redis-java"
+      }
+    }
+  },
+  "permission": {
+    "idea": "allow",
+    "idea_*": "allow",
+    "mvn *": "allow",
+    "javac *": "allow"
+  },
+  "commands": {
+    "review": {
+      "description": "Review changes with Kimi K3",
+      "template": "Review the current changes for correctness, bugs, missing tests, and style issues.",
+      "model": "opencode-go/kimi-k3"
+    }
+  }
+}

@@ -29,6 +29,7 @@ public final class Interpreter {
                 case Type.NAME -> Type.execute(command.args());
                 case XAdd.NAME -> XAdd.execute(command.args());
                 case XRange.NAME -> XRange.execute(command.args());
+                case XRead.NAME -> XRead.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
             };
         } catch (StorageException storageException) {

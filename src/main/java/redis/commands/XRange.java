@@ -3,7 +3,6 @@ package redis.commands;
 import redis.storage.Storage;
 import redis.storage.StorageException;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public final class XRange {
@@ -24,18 +23,7 @@ public final class XRange {
 
         try {
             var result = Storage.STORAGE.range(key, start, end);
-
-            List<Effect> effect = new ArrayList<>(result.size());
-            for (var entry : result) {
-                List<Effect> tupleOnes = new ArrayList<>(entry.tuples().size() * 2);
-                for (var tuple : entry.tuples()) {
-                    tupleOnes.add(Messages.bulkMessage(tuple.key()));
-                    tupleOnes.add(Messages.bulkMessage(tuple.value()));
-                }
-                var singleEntry = Messages.array(Messages.bulkMessage(entry.id()), Messages.array(tupleOnes));
-                effect.add(singleEntry);
-            }
-            return Messages.array(effect);
+            return ReadStorageEntries.readEntries(result);
         } catch (StorageException.StreamOperationsException.InvalidId e) {
             return Messages.wrongType("Used wrong ids");
         }

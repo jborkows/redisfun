@@ -8,6 +8,7 @@ import redis.storage.Value.StreamValue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 
 final class Streams {
 
@@ -60,12 +61,23 @@ final class Streams {
 
     @NullMarked
     public List<StorageEntry> range(String key, String start, String end) {
+        var startKey = StorageEntryKey.parse(start);
+        var endKey = StorageEntryKey.parse(end);
+        return query(key, i -> i.key().compareTo(startKey) >= 0 && i.key().compareTo(endKey) <= 0);
+    }
+
+    @NullMarked
+    public List<StorageEntry> readSince(String key, String id) {
+        var startKey = StorageEntryKey.parse(id);
+        return query(key, i -> i.key().compareTo(startKey) > 0);
+    }
+
+    private List<StorageEntry> query(String key, Predicate<StorageEntry> predicate) {
         var snapshot = storage.readIfPresent(key, value -> List.copyOf(expect(value).value()));
         if (snapshot == null || snapshot.isEmpty()) {
             return List.of();
         }
-        var startKey = StorageEntryKey.parse(start);
-        var endKey = StorageEntryKey.parse(end);
-        return snapshot.stream().filter(i -> i.key().compareTo(startKey) >= 0 && i.key().compareTo(endKey) <= 0).toList();
+        return snapshot.stream().filter(predicate).toList();
     }
+
 }
