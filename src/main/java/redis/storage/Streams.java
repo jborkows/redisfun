@@ -92,7 +92,12 @@ final class Streams {
         if (existing != null && !(existing instanceof StreamValue)) {
             throw new OperationAllowedOnlyForStreams();
         }
-        var startKey = StorageEntryKey.parse(id);
+        StorageEntryKey startKey;
+        if ("$".equals(id)) {
+            startKey = ((StreamValue) existing).value().getLast().key();
+        } else {
+            startKey = StorageEntryKey.parse(id);
+        }
         var future = new CompletableFuture<List<StorageEntry>>();
         pops.compute(key, (_, acc) -> {
             if (acc == null) {

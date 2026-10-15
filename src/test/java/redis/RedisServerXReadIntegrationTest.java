@@ -214,6 +214,48 @@ class RedisServerXReadIntegrationTest {
         assertEquals(List.of("-WRONGTYPE timeout should be 0 or positive"), response);
     }
 
+    @Test
+    void blockingXReadWithDollarShouldWaitForNewEntriesAfterCommand(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-1 temperature 96".formatted(key));
+
+        var xread = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("XREAD BLOCK 0 STREAMS %s $".formatted(key))));
+        var xreadThread = new Thread(xread);
+        xreadThread.start();
+        TimeUnit.MILLISECONDS.sleep(100);
+        SharedRedisServer.run("XADD %s 0-2 temperature 95".formatted(key));
+        try {
+            xreadThread.join();
+        } catch (InterruptedException e) {
+            Logger.getLogger(RedisServerXReadIntegrationTest.class.getName()).info(() -> "Interrupted while waiting for xread thread to finish");
+        }
+
+        assertEquals(List.of(
+                "*1",
+                "*2", "$" + key.length(), key,
+                "*1",
+                "*2", "$3", "0-2",
+                "*2", "$11", "temperature", "$2", "95"
+        ), xread.result);
+    }
+
+    @Test
+    void blockingXReadWithDollarShouldTimeoutWhenNoNewEntry(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-1 temperature 96".formatted(key));
+
+        var xread = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("XREAD BLOCK 100 STREAMS %s $".formatted(key))));
+        var xreadThread = new Thread(xread);
+        xreadThread.start();
+        try {
+            xreadThread.join();
+        } catch (InterruptedException e) {
+            Logger.getLogger(RedisServerXReadIntegrationTest.class.getName()).info(() -> "Interrupted while waiting for xread thread to finish");
+        }
+
+        assertEquals(List.of("*-1"), xread.result);
+    }
+
     static class Executor<V> implements Runnable {
         private final NetworkCall<V> runnable;
         volatile LocalDateTime finishedAt;
