@@ -2,14 +2,12 @@ package redis.commands;
 
 import org.jspecify.annotations.NullMarked;
 import redis.storage.Entry;
-import redis.storage.FutureWithTimeoutCleanup;
 import redis.storage.Storage;
 import redis.storage.StorageException;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.function.Function;
 
 public final class XRead {
 
@@ -22,114 +20,102 @@ public final class XRead {
         if (args.size() < 3) {
             return Messages.wrongNumberOfArguments(NAME);
         }
-        var operation = args.getFirst();
-        if ("STREAMS".equalsIgnoreCase(operation)) {
-            if (args.size() % 2 == 0) {
-                return Messages.wrongNumberOfArguments(NAME);
-            }
-            var keyIdsPairs = args.subList(1, args.size());
-
-            int arraySeparation = keyIdsPairs.size() / 2;
-            var entries = new ArrayList<ResultWrapper<List<Entry>>>(arraySeparation);
-            try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
-                var futures = new ArrayList<Future<ResultWrapper<List<Entry>>>>(arraySeparation);
-                for (int i = 0; i < arraySeparation; i++) {
-                    var counter = i;
-                    futures.add(executorService.submit(() -> {
-                        var result = Storage.STORAGE.readStreamFrom(keyIdsPairs.get(counter), keyIdsPairs.get(counter + arraySeparation));
-                        return new ResultWrapper<>(keyIdsPairs.get(counter), result);
-                    }));
-                }
-                for (int i = 0; i < arraySeparation; i++) {
-                    try {
-                        entries.add(futures.get(i).get());
-                    } catch (ExecutionException e) {
-                        futures.forEach(future -> future.cancel(true));
-                        if (e.getCause() instanceof StorageException.StreamOperationsException.InvalidId) {
-                            return Messages.wrongType("Used wrong ids");
-                        }
-                        if (e.getCause() instanceof StorageException se) {
-                            throw se;
-                        }
-                        throw new RuntimeException(e.getCause());
-                    } catch (InterruptedException e) {
-                        futures.forEach(future -> future.cancel(true));
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException(e);
-                    }
-                }
-            }
-            var data = extractDataMessages(entries);
-            return Messages.array(data);
-        } else if ("BLOCK".equalsIgnoreCase(operation)) {
-            if (args.size() % 2 == 1) {
-                return Messages.wrongNumberOfArguments(NAME);
-            }
-            var read = readDuration(args);
-            if (read instanceof ReadDuration.Failure(Effect effect)) {
-                return effect;
-            }
-            var milliseconds = switch (read) {
-                case ReadDuration.Failure _ -> throw new IllegalStateException("how?");
-                case ReadDuration.Milliseconds x -> x.value();
-            };
-
-
-            var keyIdsPairs = args.subList(2, args.size());
-
-            int arraySeparation = keyIdsPairs.size() / 2;
-            var entries = new ArrayList<ResultWrapper<List<Entry>>>(arraySeparation);
-            try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
-                var futures = new ArrayList<Future<ResultWrapper<FutureWithTimeoutCleanup<List<Entry>>>>>(arraySeparation);
-                for (int i = 0; i < arraySeparation; i++) {
-                    var counter = i;
-                    futures.add(executorService.submit(() -> {
-                        var result = Storage.STORAGE.blockingReadStreamFrom(keyIdsPairs.get(counter), keyIdsPairs.get(counter + arraySeparation));
-                        return new ResultWrapper<>(keyIdsPairs.get(counter), result);
-                    }));
-                }
-                for (int i = 0; i < arraySeparation; i++) {
-                    try {
-                        var aPromise = futures.get(i).get();
-                        var value = aPromise.entries.work(promise -> switch (milliseconds) {
-                            case 0 -> promise.get();
-                            default -> promise.get(milliseconds, TimeUnit.MILLISECONDS);
-                        });
-                        entries.add(aPromise.map(x -> value));
-
-                    } catch (TimeoutException e) {
-                        return Messages.nilArray();
-                    } catch (ExecutionException e) {
-                        futures.forEach(future -> future.cancel(true));
-                        if (e.getCause() instanceof StorageException.StreamOperationsException.InvalidId) {
-                            return Messages.wrongType("Used wrong ids");
-                        }
-                        if (e.getCause() instanceof StorageException se) {
-                            throw se;
-                        }
-                        throw new RuntimeException(e.getCause());
-                    } catch (InterruptedException e) {
-                        futures.forEach(future -> future.cancel(true));
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException(e);
-                    }
-                }
-            }
-            var data = extractDataMessages(entries);
-            return Messages.array(data);
+        var operation = args.getFirst().toUpperCase();
+        if ("STREAMS".equals(operation)) {
+            return readStreams(args);
+        } else if ("BLOCK".equals(operation)) {
+            return blockingReadStreams(args);
         } else {
             return Messages.errorMessage("Not known operation %s".formatted(operation));
         }
     }
 
+    private static Effect readStreams(List<String> args) {
+        try {
+            var entries = readInParallel(args, 1, Storage.STORAGE::readStreamFrom);
+            return arrayResponse(entries);
+        } catch (TimeoutException e) {
+            throw new RuntimeException(e); // non-blocking reads never time out
+        } catch (CommandFailedException e) {
+            return e.effect;
+        }
+    }
+
+    private static Effect blockingReadStreams(List<String> args) {
+        var read = readDuration(args);
+        return switch (read) {
+            case ReadDuration.Failure(Effect effect) -> effect;
+
+            case ReadDuration.Milliseconds(int milliseconds) -> {
+                try {
+                    var entries = readInParallel(args, 3, (key, id) -> {
+                        var futureCleanup = Storage.STORAGE.blockingReadStreamFrom(key, id);
+                        return futureCleanup.work(promise -> switch (milliseconds) {
+                            case 0 -> promise.get();
+                            default -> promise.get(milliseconds, TimeUnit.MILLISECONDS);
+                        });
+                    });
+                    yield arrayResponse(entries);
+                } catch (TimeoutException e) {
+                    yield Messages.nilArray();
+                } catch (CommandFailedException e) {
+                    yield e.effect;
+                }
+            }
+        };
+    }
+
+    private static List<StreamEntry> readInParallel(List<String> args, int keyIdsOffset, StreamReader reader) throws TimeoutException {
+        var keyIdsPairs = args.subList(keyIdsOffset, args.size());
+        if (keyIdsPairs.isEmpty() || keyIdsPairs.size() % 2 == 1) {
+            throw new CommandFailedException(Messages.wrongNumberOfArguments(NAME));
+        }
+        int arraySeparation = keyIdsPairs.size() / 2;
+        var entries = new ArrayList<StreamEntry>(arraySeparation);
+        try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = new ArrayList<Future<StreamEntry>>(arraySeparation);
+            for (int i = 0; i < arraySeparation; i++) {
+                var counter = i;
+                futures.add(executorService.submit(() -> {
+                    var result = reader.read(keyIdsPairs.get(counter), keyIdsPairs.get(counter + arraySeparation));
+                    return new StreamEntry(keyIdsPairs.get(counter), result);
+                }));
+            }
+            for (int i = 0; i < arraySeparation; i++) {
+                try {
+                    entries.add(futures.get(i).get());
+                } catch (ExecutionException e) {
+                    futures.forEach(future -> future.cancel(true));
+                    var cause = e.getCause();
+                    if (cause instanceof StorageException.StreamOperationsException.InvalidId) {
+                        throw new CommandFailedException(Messages.wrongType("Used wrong ids"));
+                    }
+                    if (cause instanceof StorageException se) {
+                        throw se;
+                    }
+                    if (cause instanceof TimeoutException te) {
+                        throw te;
+                    }
+                    throw new RuntimeException(cause == null ? e : cause);
+                } catch (InterruptedException e) {
+                    futures.forEach(future -> future.cancel(true));
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+        return entries;
+    }
+
     @NullMarked
-    private static List<Effect> extractDataMessages(ArrayList<ResultWrapper<List<Entry>>> entries) {
-        return entries.stream()
+    private static Effect arrayResponse(List<StreamEntry> entries) {
+        var data = entries.stream()
                 .map(i -> {
-                    var elements = ReadStorageEntries.readEntries(i.entries);
-                    return Messages.array(Messages.bulkMessage(i.key), elements);
+                    var elements = ReadStorageEntries.readEntries(i.entries());
+                    return Messages.array(Messages.bulkMessage(i.key()), elements);
                 })
                 .toList();
+        return Messages.array(data);
     }
 
     private static ReadDuration readDuration(List<String> args) {
@@ -146,6 +132,11 @@ public final class XRead {
         }
     }
 
+    @FunctionalInterface
+    private interface StreamReader {
+        List<Entry> read(String key, String id) throws Exception;
+    }
+
     private sealed interface ReadDuration {
         record Milliseconds(int value) implements ReadDuration {
         }
@@ -154,12 +145,14 @@ public final class XRead {
         }
     }
 
-    private record ResultWrapper<T>(String key, T entries) {
-        <V> ResultWrapper<V> map(Function<T, V> f) {
-            return new ResultWrapper<>(key, f.apply(entries));
+    private static final class CommandFailedException extends RuntimeException {
+        private final Effect effect;
+
+        CommandFailedException(Effect effect) {
+            this.effect = effect;
         }
     }
 
-    private record FResultWrapper(String key, FutureWithTimeoutCleanup<List<Entry>> entries) {
+    private record StreamEntry(String key, List<Entry> entries) {
     }
 }

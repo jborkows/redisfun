@@ -174,6 +174,6 @@ public final class Storage {
 
     @NullMarked
     public FutureWithTimeoutCleanup<List<Entry>> blockingReadStreamFrom(String key, String id) {
-        throw new RuntimeException("not implemented");
+        return streams.blockingRead(key, id).map(Storage::intoEntries);
     }
 }

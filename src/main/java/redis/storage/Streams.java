@@ -6,13 +6,18 @@ import redis.storage.StorageException.StreamOperationsException;
 import redis.storage.Value.StreamValue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 final class Streams {
 
     private final Storage storage;
+    private final Map<String, Map<StorageEntryKey, List<CompletableFuture<List<StorageEntry>>>>> pops = new ConcurrentHashMap<>();
 
     Streams(Storage storage) {
         this.storage = storage;
@@ -51,6 +56,7 @@ final class Streams {
             streamValue.value().add(validEntry);
             return newPersistency;
         });
+        Thread.ofVirtual().start(() -> doBlockingRead(streamKey));
         return id.get();
     }
 
@@ -80,4 +86,67 @@ final class Streams {
         return snapshot.stream().filter(predicate).toList();
     }
 
+    public FutureWithTimeoutCleanup<List<StorageEntry>> blockingRead(String key, String id) {
+        var startKey = StorageEntryKey.parse(id);
+        var future = new CompletableFuture<List<StorageEntry>>();
+        pops.compute(key, (_, acc) -> {
+            if (acc == null) {
+                acc = new HashMap<>();
+            }
+            acc.computeIfAbsent(startKey, (x) -> new ArrayList<>()).add(future);
+            return acc;
+        });
+        doBlockingRead(key);
+
+        return new FutureWithTimeoutCleanup<>(future, () ->
+                pops.compute(key, (_, awaiting) -> {
+                    if (awaiting == null) {
+                        return null;
+                    }
+                    if (!awaiting.containsKey(startKey)) {
+                        return awaiting;
+                    }
+                    awaiting.get(startKey).remove(future);
+                    if (awaiting.isEmpty()) {
+                        return null;
+                    } else {
+                        return awaiting;
+                    }
+                })
+        );
+    }
+
+    private void doBlockingRead(@NonNull String key) {
+        storage.mutate(key, (aKey, existing) -> {
+            if (existing == null) {
+                return null;
+            }
+            if (Storage.extractFrom(existing) instanceof Value.StreamValue(List<StorageEntry> elements)) {
+                pops.compute(aKey, (_, acc) -> {
+                    if (acc == null) {
+                        return null;
+                    }
+                    if (elements.isEmpty()) {
+                        return acc;
+                    }
+                    var lastKey = elements.getLast().key();
+                    var matchingKeys = acc.keySet().stream().filter(id -> id.compareTo(lastKey) < 0).toList();
+                    //No matching keys, waiting for another chance
+                    if (matchingKeys.isEmpty()) {
+                        return acc;
+                    }
+                    for (var matchingKey : matchingKeys) {
+                        var found = elements.stream().filter(i -> matchingKey.compareTo(i.key()) < 0).toList();
+                        acc.remove(matchingKey).forEach(f -> f.complete(found));
+                    }
+                    if (acc.isEmpty()) {
+                        return null;
+                    }
+                    return acc;
+                });
+                return existing;
+            }
+            return existing;
+        });
+    }
 }
