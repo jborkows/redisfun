@@ -94,7 +94,9 @@ final class Streams {
         }
         StorageEntryKey startKey;
         if ("$".equals(id)) {
-            startKey = ((StreamValue) existing).value().getLast().key();
+            startKey = existing == null
+                    ? new StorageEntryKey(0, 0)
+                    : ((StreamValue) existing).value().getLast().key();
         } else {
             startKey = StorageEntryKey.parse(id);
         }

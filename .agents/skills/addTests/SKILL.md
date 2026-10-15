@@ -1,8 +1,8 @@
 ---
 name: Add tests for code crafters scenario
-description: Adds tests code crafters scenario using code crafters cli
+description: Adds tests for a CodeCrafters scenario using the codecrafters CLI
 metadata:
-opencode/autoinvoke: true
+  opencode/autoinvoke: true
 ---
 
 ## RESTRICTIONS

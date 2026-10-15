@@ -256,6 +256,30 @@ class RedisServerXReadIntegrationTest {
         assertEquals(List.of("*-1"), xread.result);
     }
 
+    @Test
+    void blockingXReadWithDollarOnNonExistingStreamWaitsForNewEntries(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+
+        var xread = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("XREAD BLOCK 0 STREAMS %s $".formatted(key))));
+        var xreadThread = new Thread(xread);
+        xreadThread.start();
+        TimeUnit.MILLISECONDS.sleep(100);
+        SharedRedisServer.run("XADD %s 0-1 temperature 96".formatted(key));
+        try {
+            xreadThread.join();
+        } catch (InterruptedException e) {
+            Logger.getLogger(RedisServerXReadIntegrationTest.class.getName()).info(() -> "Interrupted while waiting for xread thread to finish");
+        }
+
+        assertEquals(List.of(
+                "*1",
+                "*2", "$" + key.length(), key,
+                "*1",
+                "*2", "$3", "0-1",
+                "*2", "$11", "temperature", "$2", "96"
+        ), xread.result);
+    }
+
     static class Executor<V> implements Runnable {
         private final NetworkCall<V> runnable;
         volatile LocalDateTime finishedAt;
