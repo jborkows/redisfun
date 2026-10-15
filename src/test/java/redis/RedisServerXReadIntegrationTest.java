@@ -117,6 +117,16 @@ class RedisServerXReadIntegrationTest {
     }
 
     @Test
+    void blockingXReadAgainstNonStreamKeyRespondsWithWrongTypeError(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("SET %s value".formatted(key));
+
+        var response = SharedRedisServer.run("XREAD BLOCK 100 STREAMS %s 0-0".formatted(key));
+
+        assertEquals(List.of("-WRONGTYPE Operation XREAD allowed only for streams"), response);
+    }
+
+    @Test
     void blockingXReadAfterXAddShouldReturnImmediately(TestInfo testInfo) throws IOException {
         var key = SharedRedisServer.key(testInfo);
         SharedRedisServer.run("XADD %s 0-1 temperature 96".formatted(key));

@@ -9,7 +9,7 @@ public record FutureWithTimeoutCleanup<T>(CompletableFuture<T> future, Runnable 
     public T work(TimeoutAware<CompletableFuture<T>, T> operation) throws TimeoutException, InterruptedException, ExecutionException {
         try {
             return operation.apply(future);
-        } catch (TimeoutException e) {
+        } catch (Exception e) {
             cleaningAction.run();
             throw e;
         }

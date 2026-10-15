@@ -3,6 +3,7 @@ package redis.storage;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
 import redis.storage.StorageException.StreamOperationsException;
+import redis.storage.StorageException.StreamOperationsException.OperationAllowedOnlyForStreams;
 import redis.storage.Value.StreamValue;
 
 import java.util.ArrayList;
@@ -87,6 +88,10 @@ final class Streams {
     }
 
     public FutureWithTimeoutCleanup<List<StorageEntry>> blockingRead(String key, String id) {
+        var existing = storage.lookup(key);
+        if (existing != null && !(existing instanceof StreamValue)) {
+            throw new OperationAllowedOnlyForStreams();
+        }
         var startKey = StorageEntryKey.parse(id);
         var future = new CompletableFuture<List<StorageEntry>>();
         pops.compute(key, (_, acc) -> {
