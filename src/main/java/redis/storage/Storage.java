@@ -166,8 +166,14 @@ public final class Storage {
         return intoEntries(found);
     }
 
+    @NullMarked
     public List<Entry> readStreamFrom(String key, String id) {
         var found = streams.readSince(key, id);
         return intoEntries(found);
+    }
+
+    @NullMarked
+    public FutureWithTimeoutCleanup<List<Entry>> blockingReadStreamFrom(String key, String id) {
+        throw new RuntimeException("not implemented");
     }
 }

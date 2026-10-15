@@ -6,9 +6,14 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @TestMethodOrder(MethodOrderer.Random.class)
 class RedisServerXReadIntegrationTest {
@@ -109,5 +114,114 @@ class RedisServerXReadIntegrationTest {
         var response = SharedRedisServer.run("XREAD STREAMS %s 0-0".formatted(key));
 
         assertEquals(List.of("-WRONGTYPE Operation XREAD allowed only for streams"), response);
+    }
+
+    @Test
+    void blockingXReadAfterXAddShouldReturnImmediately(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-1 temperature 96".formatted(key));
+
+        var response = SharedRedisServer.run("XREAD BLOCK 1000 STREAMS %s 0-0".formatted(key));
+
+        assertEquals(List.of(
+                "*1",
+                "*2", "$" + key.length(), key,
+                "*1",
+                "*2", "$3", "0-1",
+                "*2", "$11", "temperature", "$2", "96"
+        ), response);
+    }
+
+    @Test
+    void blockingXReadShouldWaitForXAdd(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        var xread = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("XREAD BLOCK 0 STREAMS %s 0-1".formatted(key))));
+        var xreadThread = new Thread(xread);
+        xreadThread.start();
+        TimeUnit.MILLISECONDS.sleep(100);
+        var timeOfXAdd = LocalDateTime.now();
+        SharedRedisServer.run("XADD %s 0-2 temperature 95".formatted(key));
+        try {
+            xreadThread.join();
+        } catch (InterruptedException e) {
+            Logger.getLogger(RedisServerXReadIntegrationTest.class.getName()).info(() -> "Interrupted while waiting for xread thread to finish");
+        }
+
+        assertEquals(List.of(
+                "*1",
+                "*2", "$" + key.length(), key,
+                "*1",
+                "*2", "$3", "0-2",
+                "*2", "$11", "temperature", "$2", "95"
+        ), xread.result);
+        assertTrue(timeOfXAdd.isBefore(xread.finishedAt));
+    }
+
+    @Test
+    void blockingXReadCanDecideHowMuchToWaitAndIfResponseReturnsInTimeOk(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-1 temperature 96".formatted(key));
+        var xread = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("XREAD BLOCK 1000 STREAMS %s 0-1".formatted(key))));
+        var xreadThread = new Thread(xread);
+        xreadThread.start();
+        TimeUnit.MILLISECONDS.sleep(10);
+        SharedRedisServer.run("XADD %s 0-2 temperature 95".formatted(key));
+        try {
+            xreadThread.join();
+        } catch (InterruptedException e) {
+            Logger.getLogger(RedisServerXReadIntegrationTest.class.getName()).info(() -> "Interrupted while waiting for xread thread to finish");
+        }
+
+        assertEquals(List.of(
+                "*1",
+                "*2", "$" + key.length(), key,
+                "*1",
+                "*2", "$3", "0-2",
+                "*2", "$11", "temperature", "$2", "95"
+        ), xread.result);
+    }
+
+    @Test
+    void blockingXReadShouldTimeoutWhenNoNewEntry(TestInfo testInfo) throws IOException, InterruptedException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.run("XADD %s 0-1 temperature 96".formatted(key));
+        var xread = new Executor<>(() -> SocketTimeout.with(() -> SharedRedisServer.run("XREAD BLOCK 100 STREAMS %s 0-1".formatted(key))));
+        var xreadThread = new Thread(xread);
+        xreadThread.start();
+        try {
+            xreadThread.join();
+        } catch (InterruptedException e) {
+            Logger.getLogger(RedisServerXReadIntegrationTest.class.getName()).info(() -> "Interrupted while waiting for xread thread to finish");
+        }
+
+        assertEquals(List.of("*-1"), xread.result);
+    }
+
+    @Test
+    void blockingXReadWithNonNumericTimeoutRespondsWithError(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.run("XREAD BLOCK abc STREAMS %s 0-0".formatted(key));
+        assertEquals(List.of("-WRONGTYPE timeout should be 0 or positive"), response);
+    }
+
+    static class Executor<V> implements Runnable {
+        private final NetworkCall<V> runnable;
+        volatile LocalDateTime finishedAt;
+        volatile V result;
+
+        private Executor(NetworkCall<V> runnable) {
+            this.runnable = runnable;
+        }
+
+        @Override
+        public void run() {
+            try {
+                result = runnable.get();
+                finishedAt = LocalDateTime.now();
+            } catch (IOException e) {
+                Logger.getLogger(RedisServerXReadIntegrationTest.class.getName()).log(Level.SEVERE, "While waiting", e);
+                finishedAt = LocalDateTime.now();
+            }
+        }
     }
 }

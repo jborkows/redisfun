@@ -27,11 +27,11 @@ public final class Blpop {
             } else if (howManySecondsToWait > 60 * 60) {
                 return Messages.wrongType("timeout too big");
             }
-            int miliseconds = (int) Math.round(howManySecondsToWait * 1000);
+            int milliseconds = (int) Math.round(howManySecondsToWait * 1000);
             var aPromise = Storage.STORAGE.blockingPop(key);
-            var value = aPromise.work(promise -> switch (miliseconds) {
+            var value = aPromise.work(promise -> switch (milliseconds) {
                 case 0 -> promise.get();
-                default -> promise.get(miliseconds, TimeUnit.MILLISECONDS);
+                default -> promise.get(milliseconds, TimeUnit.MILLISECONDS);
             });
 
             LOGGER.info(() -> "Blocking pop operation for " + key + " finished");
