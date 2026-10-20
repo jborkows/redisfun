@@ -176,4 +176,9 @@ public final class Storage {
     public FutureWithTimeoutCleanup<List<Entry>> blockingReadStreamFrom(String key, String id) {
         return streams.blockingRead(key, id).map(Storage::intoEntries);
     }
+
+    @NullMarked
+    public long increment(String key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
+        return strings.increment(key);
+    }
 }

@@ -1,16 +1,16 @@
 package redis.storage;
 
-import redis.storage.DataPersistency.ExpiredAt;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import redis.storage.DataPersistency.Eternal;
-import redis.storage.Value.StringValue;
-
+import redis.storage.DataPersistency.ExpiredAt;
 import redis.storage.StorageException.CannotModifyType;
 import redis.storage.StorageException.OperationAllowedOnlyForSingleElement;
-
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
+import redis.storage.Value.StringValue;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * String-shaped operations. Atomicity comes from {@link Storage#mutate};
@@ -22,6 +22,13 @@ final class Strings {
 
     Strings(Storage storage) {
         this.storage = storage;
+    }
+
+    private static DataPersistency copy(DataPersistency original, Value value) {
+        return switch (original) {
+            case Eternal eternal -> new Eternal(value);
+            case ExpiredAt expiredAt -> new ExpiredAt(value, expiredAt.timestamp());
+        };
     }
 
     @Nullable
@@ -55,5 +62,31 @@ final class Strings {
                 default -> throw CannotModifyType.cannotModifyFromList();
             };
         });
+    }
+
+    @NullMarked
+    public long increment(String key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
+        AtomicLong atomicLong = new AtomicLong();
+        storage.mutate(key, (_, v) -> {
+            if (v == null) {
+                atomicLong.set(1L);
+                return new Eternal(new StringValue("1"));
+            } else {
+                var original = Storage.extractFrom(v);
+                if (original instanceof StringValue(String originalValue)) {
+                    try {
+                        long value = Long.parseLong(originalValue) + 1;
+                        atomicLong.set(value);
+                        return copy(v, new StringValue(String.valueOf(value)));
+                    } catch (NumberFormatException e) {
+                        throw new StorageException.OperationAllowedOnlyForIntegers();
+                    }
+                } else {
+                    throw new StorageException.OperationAllowedOnlyForSingleElement();
+                }
+
+            }
+        });
+        return atomicLong.get();
     }
 }

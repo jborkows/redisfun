@@ -10,6 +10,9 @@ public sealed abstract class StorageException extends RuntimeException {
 
     }
 
+    public static final class OperationAllowedOnlyForIntegers extends StorageException {
+    }
+
 
     public static sealed abstract class StreamOperationsException extends StorageException {
 

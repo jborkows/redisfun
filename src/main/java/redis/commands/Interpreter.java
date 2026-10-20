@@ -19,6 +19,7 @@ public final class Interpreter {
                 case "PING" -> Messages.simpleMessage("PONG");
                 case "ECHO" -> echo(command.args());
                 case "GET" -> getCommand(command.args());
+                case Incr.NAME -> Incr.execute(command.args());
                 case SetCommand.NAME -> SetCommand.execute(command.args());
                 case Rpush.NAME -> Rpush.execute(command.args());
                 case Lrange.NAME -> Lrange.execute(command.args());
