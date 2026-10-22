@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.ClientId;
 import redis.protocol.Command;
 import redis.storage.Storage;
 import redis.storage.StorageException;
@@ -70,5 +71,9 @@ public final class Interpreter {
         }
         var value = args.getFirst();
         return Messages.bulkMessage(value);
+    }
+
+    public static void disconnected(ClientId clientId) {
+        Storage.STORAGE.disconnected(clientId);
     }
 }

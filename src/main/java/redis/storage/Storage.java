@@ -3,6 +3,7 @@ package redis.storage;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
+import redis.ClientId;
 import redis.storage.DataPersistency.Eternal;
 import redis.storage.DataPersistency.ExpiredAt;
 import redis.storage.StorageException.StreamOperationsException;
@@ -180,5 +181,9 @@ public final class Storage {
     @NullMarked
     public long increment(String key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
         return strings.increment(key);
+    }
+
+    public void disconnected(ClientId clientId) {
+
     }
 }

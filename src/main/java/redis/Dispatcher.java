@@ -10,8 +10,13 @@ import java.util.logging.Logger;
 
 class Dispatcher {
     private static final Logger logger = Logger.getLogger(Dispatcher.class.getName());
+    private final ClientId clientId;
     private Lexer lexer = new Lexer();
     private Parser parser = new Parser();
+
+    Dispatcher(ClientId clientId) {
+        this.clientId = clientId;
+    }
 
     List<Effect> process(byte[] input, int read) {
         logger.fine(() -> "Received: " + new String(input, 0, read));
@@ -44,5 +49,9 @@ class Dispatcher {
             lexer = tokenizerResponse.lexer();
         }
         return tokens;
+    }
+
+    public void disconnected() {
+        Interpreter.disconnected(clientId);
     }
 }
