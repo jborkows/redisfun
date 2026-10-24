@@ -11,6 +11,7 @@ class TransactionAware implements Function<Command, Effect> {
     private static final String EXEC_COMMAND = "EXEC";
     private static final String MULTI_COMMAND = "MULTI";
     private static final String DISCARD_COMMAND = "DISCARD";
+    private static final String WATCH_COMMAND = "WATCH";
     private final Function<Command, Effect> processor;
     private final List<Command> commandQueue = new ArrayList<>();
     private boolean transactionInProgress = false;
@@ -42,6 +43,13 @@ class TransactionAware implements Function<Command, Effect> {
                         yield Messages.wrongNumberOfArguments(command.name());
                     }
                     yield Messages.errorMessage("%s without %s".formatted(DISCARD_COMMAND, MULTI_COMMAND));
+                }
+                case WATCH_COMMAND -> {
+                    if (command.args().isEmpty()) {
+                        yield Messages.wrongNumberOfArguments(command.name());
+                    }
+                    yield Messages.simpleMessage("OK");
+
                 }
                 default -> processor.apply(command);
             };
