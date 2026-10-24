@@ -48,4 +48,39 @@ class RedisServerMultiIntegrationTest {
         assertEquals(List.of("+OK", "+QUEUED", "+QUEUED"), response);
     }
 
+    @Test
+    void execShouldReturnResponsesForQueuedCommands(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var otherKey = key + ".other";
+        var response = SharedRedisServer.runOnSameConnection(
+                "MULTI",
+                "SET %s 6".formatted(key),
+                "INCR %s".formatted(key),
+                "INCR %s".formatted(otherKey),
+                "GET %s".formatted(otherKey),
+                "EXEC"
+        );
+        assertEquals(List.of(
+                "+OK",
+                "+QUEUED",
+                "+QUEUED",
+                "+QUEUED",
+                "+QUEUED",
+                "*4", "+OK", ":7", ":1", "$1", "1"
+        ), response);
+    }
+
+    @Test
+    void execShouldApplySideEffects(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        SharedRedisServer.runOnSameConnection(
+                "MULTI",
+                "SET %s 6".formatted(key),
+                "INCR %s".formatted(key),
+                "EXEC"
+        );
+        var response = SharedRedisServer.run("GET %s".formatted(key));
+        assertEquals(List.of("$1", "7"), response);
+    }
+
 }

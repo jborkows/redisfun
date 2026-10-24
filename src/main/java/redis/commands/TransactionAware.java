@@ -9,9 +9,10 @@ import java.util.function.Function;
 class TransactionAware implements Function<Command, Effect> {
 
     private static final String EXEC_COMMAND = "EXEC";
+    private static final String MULTI_COMMAND = "MULTI";
     private final Function<Command, Effect> processor;
+    private final List<Command> commandQueue = new ArrayList<>();
     private boolean transactionInProgress = false;
-    private List<Command> commandQueue = new ArrayList<>();
 
     TransactionAware(Function<Command, Effect> processor) {
         this.processor = processor;
@@ -21,7 +22,7 @@ class TransactionAware implements Function<Command, Effect> {
     public Effect apply(Command command) {
         if (!transactionInProgress) {
             return switch (command.commandName()) {
-                case "MULTI" -> {
+                case MULTI_COMMAND -> {
                     if (!command.args().isEmpty()) {
                         yield Messages.wrongNumberOfArguments(command.name());
                     }
@@ -33,7 +34,7 @@ class TransactionAware implements Function<Command, Effect> {
                     if (!command.args().isEmpty()) {
                         yield Messages.wrongNumberOfArguments(command.name());
                     }
-                    yield Messages.errorMessage("EXEC without MULTI");
+                    yield Messages.errorMessage("%s without %s".formatted(EXEC_COMMAND, MULTI_COMMAND));
                 }
                 default -> processor.apply(command);
             };
