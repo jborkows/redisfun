@@ -64,6 +64,57 @@ final class SharedRedisServer {
         }
     }
 
+    /**
+     * Describes a single logical command sent over a Redis connection.
+     * Implementations decide whether the command is written immediately or
+     * after a caller-supplied action has completed, which is useful for
+     * orchestrating timing across connections (e.g. transactions with
+     * interleaved blocking operations).
+     */
+    sealed interface CommandInput permits DirectCall, WaitableCommand {
+        List<String> lines();
+    }
+
+    record DirectCall(List<String> lines) implements CommandInput {
+    }
+
+    record WaitableCommand(List<String> lines, InterruptibleAction beforeSend) implements CommandInput {
+    }
+
+    @FunctionalInterface
+    interface InterruptibleAction {
+        void run() throws InterruptedException;
+    }
+
+    /**
+     * Sends a command immediately. The command string is encoded as a Redis
+     * array of bulk strings before being written to the socket.
+     */
+    static CommandInput Immediately(String command) {
+        return new DirectCall(encode(command));
+    }
+
+    /**
+     * Waits for {@code beforeSend} to complete before sending the command.
+     * The wait happens while the connection is already held, so this can be
+     * used to interleave commands from other connections in the middle of a
+     * transaction.
+     */
+    static CommandInput Waitable(String command, InterruptibleAction beforeSend) {
+        return new WaitableCommand(encode(command), beforeSend);
+    }
+
+    private static List<String> encode(String command) {
+        var parts = command.split(" ", -1);
+        var lines = new ArrayList<String>();
+        lines.add("*" + parts.length);
+        for (var part : parts) {
+            lines.add("$" + part.length());
+            lines.add(part);
+        }
+        return lines;
+    }
+
     static List<String> run(String command) throws IOException {
         return cli(command.split(" ", -1));
     }
@@ -73,16 +124,13 @@ final class SharedRedisServer {
      * connection-scoped state such as transactions (MULTI/EXEC/DISCARD).
      */
     static List<String> runOnSameConnection(String... commands) throws IOException {
-        var commandToSend = new ArrayList<String>();
-        for (var command : commands) {
-            var parts = command.split(" ", -1);
-            commandToSend.add("*" + parts.length);
-            for (var part : parts) {
-                commandToSend.add("$" + part.length());
-                commandToSend.add(part);
-            }
-        }
-        return sendCommand(commandToSend.toArray(new String[0]));
+        return runOnSameConnection(Arrays.stream(commands)
+                .map(SharedRedisServer::Immediately)
+                .toArray(CommandInput[]::new));
+    }
+
+    static List<String> runOnSameConnection(CommandInput... commands) throws IOException {
+        return sendInputs(commands);
     }
 
     static List<String> cli(String... command) throws IOException {
@@ -92,27 +140,43 @@ final class SharedRedisServer {
             commandToSend.add("$" + commandLine.length());
             commandToSend.add(commandLine);
         }
-        return sendCommand(commandToSend.toArray(new String[0]));
+        return sendInputs(new DirectCall(commandToSend));
     }
 
     static List<String> sendCommand(String... command) throws IOException {
+        return sendInputs(Arrays.stream(command)
+                .map(line -> new DirectCall(List.of(line)))
+                .toArray(CommandInput[]::new));
+    }
+
+    private static List<String> sendInputs(CommandInput... commands) throws IOException {
         try {
             MAX_CONCURRENT_SOCKETS.acquire();
             try (var socket = new Socket("localhost", port())) {
                 // Bound the blocking read so a short/incomplete response fails the test
                 // instead of freezing it (readLine() can never be unblocked otherwise).
                 socket.setSoTimeout(SocketTimeout.timeoutMs());
-                for (var cmd : command) {
-                    socket.getOutputStream().write((cmd + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                for (var input : commands) {
+                    if (input instanceof WaitableCommand waitable) {
+                        try {
+                            waitable.beforeSend().run();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException(e);
+                        }
+                    }
+                    for (var cmd : input.lines()) {
+                        socket.getOutputStream().write((cmd + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                    }
+                    socket.getOutputStream().flush();
                 }
-                socket.getOutputStream().flush();
                 OnWroteRegister.socketWroteData();
 
                 var response = new ByteArrayOutputStream();
                 var buffer = new byte[1024];
                 var in = socket.getInputStream();
                 try {
-                    LOGGER.log(Level.FINER, "Starting reading socket after command " + Arrays.toString(command));
+                    LOGGER.log(Level.FINER, "Starting reading socket after command " + Arrays.toString(commands));
                     while (true) {
                         var read = in.read(buffer);
                         if (read == -1) {
@@ -121,9 +185,9 @@ final class SharedRedisServer {
                         response.write(buffer, 0, read);
                     }
                 } catch (SocketTimeoutException e) {
-                    LOGGER.log(Level.SEVERE, "Socket timed out after command " + Arrays.toString(command), e);
+                    LOGGER.log(Level.SEVERE, "Socket timed out after command " + Arrays.toString(commands), e);
                 } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "Some other error while reading after command " + Arrays.toString(command), e);
+                    LOGGER.log(Level.SEVERE, "Some other error while reading after command " + Arrays.toString(commands), e);
                 }
 
                 var text = response.toString(StandardCharsets.ISO_8859_1);
