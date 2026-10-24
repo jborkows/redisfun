@@ -31,4 +31,14 @@ class RedisServerWatchIntegrationTest {
         var response = SharedRedisServer.run("WATCH");
         assertEquals(List.of("-ERR wrong number of arguments for 'WATCH' command"), response);
     }
+
+    @Test
+    void watchInsideMultiShouldReturnError(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.runOnSameConnection(
+                "MULTI",
+                "WATCH %s".formatted(key)
+        );
+        assertEquals(List.of("+OK", "-ERR WATCH inside MULTI is not allowed"), response);
+    }
 }

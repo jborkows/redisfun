@@ -55,6 +55,12 @@ class TransactionAware implements Function<Command, Effect> {
             };
         } else {
             return switch (command.commandName()) {
+                case WATCH_COMMAND -> {
+                    if (command.args().isEmpty()) {
+                        yield Messages.wrongNumberOfArguments(command.name());
+                    }
+                    yield Messages.errorMessage("%s inside %s is not allowed".formatted(WATCH_COMMAND, MULTI_COMMAND));
+                }
                 case EXEC_COMMAND -> {
                     if (!command.args().isEmpty()) {
                         yield Messages.wrongNumberOfArguments(command.name());
