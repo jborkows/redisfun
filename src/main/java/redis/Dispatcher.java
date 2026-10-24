@@ -8,23 +8,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 
-class Dispatcher {
+class Dispatcher implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(Dispatcher.class.getName());
-    private final ClientId clientId;
     private Lexer lexer = new Lexer();
     private Parser parser = new Parser();
+    private Interpreter interpreter;
 
     Dispatcher(ClientId clientId) {
-        this.clientId = clientId;
+        this.interpreter = new Interpreter(clientId);
     }
 
     List<Effect> process(byte[] input, int read) {
         logger.fine(() -> "Received: " + new String(input, 0, read));
         var tokens = extractTokens(input, read);
         var commands = parseTokens(tokens);
-        return commands.stream()
-                .map(Interpreter::interpret)
-                .toList();
+        return commands.stream().map(interpreter).toList();
     }
 
     private List<Command> parseTokens(List<Token> tokens) {
@@ -51,7 +49,9 @@ class Dispatcher {
         return tokens;
     }
 
-    public void disconnected() {
-        Interpreter.disconnected(clientId);
+
+    @Override
+    public void close() {
+        interpreter.close();
     }
 }

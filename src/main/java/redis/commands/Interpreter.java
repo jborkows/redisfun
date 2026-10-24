@@ -11,33 +11,10 @@ import redis.storage.StorageException.StreamOperationsException.OperationAllowed
 
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
-public final class Interpreter {
-    public static Effect interpret(Command command) {
-        var commandName = command.name().toUpperCase(Locale.ROOT);
-        try {
-            return switch (commandName) {
-                case "PING" -> Messages.simpleMessage("PONG");
-                case "ECHO" -> echo(command.args());
-                case "GET" -> getCommand(command.args());
-                case Incr.NAME -> Incr.execute(command.args());
-                case SetCommand.NAME -> SetCommand.execute(command.args());
-                case Rpush.NAME -> Rpush.execute(command.args());
-                case Lrange.NAME -> Lrange.execute(command.args());
-                case Lpush.NAME -> Lpush.execute(command.args());
-                case Llen.NAME -> Llen.execute(command.args());
-                case Lpop.NAME -> Lpop.execute(command.args());
-                case Blpop.NAME -> Blpop.execute(command.args());
-                case Type.NAME -> Type.execute(command.args());
-                case XAdd.NAME -> XAdd.execute(command.args());
-                case XRange.NAME -> XRange.execute(command.args());
-                case XRead.NAME -> XRead.execute(command.args());
-                default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
-            };
-        } catch (StorageException storageException) {
-            return parseException(commandName, storageException);
-        }
-    }
+public record Interpreter(ClientId clientId) implements AutoCloseable, Function<Command, Effect> {
+
 
     private static Effect parseException(String commandName, StorageException storageException) {
         return switch (storageException) {
@@ -73,7 +50,35 @@ public final class Interpreter {
         return Messages.bulkMessage(value);
     }
 
-    public static void disconnected(ClientId clientId) {
-        Storage.STORAGE.disconnected(clientId);
+    public Effect apply(Command command) {
+        var commandName = command.name().toUpperCase(Locale.ROOT);
+        try {
+            return switch (commandName) {
+                case "PING" -> Messages.simpleMessage("PONG");
+                case "ECHO" -> echo(command.args());
+                case "GET" -> getCommand(command.args());
+                case Incr.NAME -> Incr.execute(command.args());
+                case SetCommand.NAME -> SetCommand.execute(command.args());
+                case Rpush.NAME -> Rpush.execute(command.args());
+                case Lrange.NAME -> Lrange.execute(command.args());
+                case Lpush.NAME -> Lpush.execute(command.args());
+                case Llen.NAME -> Llen.execute(command.args());
+                case Lpop.NAME -> Lpop.execute(command.args());
+                case Blpop.NAME -> Blpop.execute(command.args());
+                case Type.NAME -> Type.execute(command.args());
+                case XAdd.NAME -> XAdd.execute(command.args());
+                case XRange.NAME -> XRange.execute(command.args());
+                case XRead.NAME -> XRead.execute(command.args());
+                default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
+            };
+        } catch (StorageException storageException) {
+            return parseException(commandName, storageException);
+        }
     }
+
+    @Override
+    public void close() {
+
+    }
+
 }

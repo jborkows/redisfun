@@ -113,8 +113,7 @@ public final class RedisServer implements AutoCloseable {
         var buffer = new byte[1024];
         int bytesRead;
         var clientId = ClientId.generate();
-        var dispatcher = new Dispatcher(clientId);
-        try (clientSocket) {
+        try (clientSocket; var dispatcher = new Dispatcher(clientId)) {
             while ((bytesRead = clientSocket.getInputStream().read(buffer)) != -1) {
                 var effects = dispatcher.process(buffer, bytesRead);
                 var outputStream = clientSocket.getOutputStream();
@@ -125,8 +124,6 @@ public final class RedisServer implements AutoCloseable {
             }
         } catch (IOException e) {
             logger.severe("IOException: " + e.getMessage());
-        } finally {
-            dispatcher.disconnected();
         }
     }
 
