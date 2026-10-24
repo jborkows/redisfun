@@ -10,6 +10,7 @@ class TransactionAware implements Function<Command, Effect> {
 
     private static final String EXEC_COMMAND = "EXEC";
     private static final String MULTI_COMMAND = "MULTI";
+    private static final String DISCARD_COMMAND = "DISCARD";
     private final Function<Command, Effect> processor;
     private final List<Command> commandQueue = new ArrayList<>();
     private boolean transactionInProgress = false;
@@ -36,14 +37,31 @@ class TransactionAware implements Function<Command, Effect> {
                     }
                     yield Messages.errorMessage("%s without %s".formatted(EXEC_COMMAND, MULTI_COMMAND));
                 }
+                case DISCARD_COMMAND -> {
+                    if (!command.args().isEmpty()) {
+                        yield Messages.wrongNumberOfArguments(command.name());
+                    }
+                    yield Messages.errorMessage("%s without %s".formatted(DISCARD_COMMAND, MULTI_COMMAND));
+                }
                 default -> processor.apply(command);
             };
         } else {
             return switch (command.commandName()) {
                 case EXEC_COMMAND -> {
+                    if (!command.args().isEmpty()) {
+                        yield Messages.wrongNumberOfArguments(command.name());
+                    }
                     var messages = commandQueue.stream().map(processor).toList();
                     transactionInProgress = false;
                     yield Messages.array(messages);
+                }
+                case DISCARD_COMMAND -> {
+                    if (!command.args().isEmpty()) {
+                        yield Messages.wrongNumberOfArguments(command.name());
+                    }
+                    commandQueue.clear();
+                    transactionInProgress = false;
+                    yield Messages.simpleMessage("OK");
                 }
                 default -> {
                     commandQueue.add(command);
