@@ -68,7 +68,7 @@ class InterpreterTest {
     @Test
     void acceptsSetWithExpiryOption() {
         var effect = interpreter.apply(new Command("SET", List.of("a", "b", "PX", "5000")));
-        assertEquals(new Effect.SimpleString("OK"), effect);
+        assertEquals(Messages.ok(), effect);
     }
 
     @Test

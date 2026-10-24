@@ -33,7 +33,7 @@ public final class SetCommand {
         } else {
             Storage.STORAGE.put(key, value);
         }
-        return Messages.simpleMessage("OK");
+        return Messages.ok();
     }
 
     private static @Nullable Duration expiryDuration(List<String> options) {

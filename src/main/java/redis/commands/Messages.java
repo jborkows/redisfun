@@ -15,6 +15,10 @@ final class Messages {
         return new Effect.SimpleString(message);
     }
 
+    static Effect ok() {
+        return simpleMessage("OK");
+    }
+
     static Effect bulkMessage(String message) {
         return new Effect.BulkString(message);
     }

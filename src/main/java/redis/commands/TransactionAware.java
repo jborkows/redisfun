@@ -30,7 +30,7 @@ class TransactionAware implements Function<Command, Effect> {
                     }
                     transactionInProgress = true;
                     commandQueue.clear();
-                    yield Messages.simpleMessage("OK");
+                    yield Messages.ok();
                 }
                 case EXEC_COMMAND -> {
                     if (!command.args().isEmpty()) {
@@ -48,7 +48,7 @@ class TransactionAware implements Function<Command, Effect> {
                     if (command.args().isEmpty()) {
                         yield Messages.wrongNumberOfArguments(command.name());
                     }
-                    yield Messages.simpleMessage("OK");
+                    yield Messages.ok();
 
                 }
                 default -> processor.apply(command);
@@ -69,7 +69,7 @@ class TransactionAware implements Function<Command, Effect> {
                     }
                     commandQueue.clear();
                     transactionInProgress = false;
-                    yield Messages.simpleMessage("OK");
+                    yield Messages.ok();
                 }
                 default -> {
                     commandQueue.add(command);
