@@ -32,6 +32,12 @@ class RedisServerMultiIntegrationTest {
     }
 
     @Test
+    void emptyTransactionShouldReturnEmptyArrayAndFollowingExecFails() throws IOException {
+        var response = SharedRedisServer.runOnSameConnection("MULTI", "EXEC", "EXEC");
+        assertEquals(List.of("+OK", "*0", "-ERR EXEC without MULTI"), response);
+    }
+
+    @Test
     void multiShouldQueueCommands(TestInfo testInfo) throws IOException {
         var key = SharedRedisServer.key(testInfo);
         var response = SharedRedisServer.runOnSameConnection(

@@ -39,6 +39,11 @@ class TransactionAware implements Function<Command, Effect> {
             };
         } else {
             return switch (command.commandName()) {
+                case EXEC_COMMAND -> {
+                    var messages = commandQueue.stream().map(processor).toList();
+                    transactionInProgress = false;
+                    yield Messages.array(messages);
+                }
                 default -> {
                     commandQueue.add(command);
                     yield Messages.simpleMessage("QUEUED");
