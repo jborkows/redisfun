@@ -1,7 +1,6 @@
 package redis.commands;
 
 import org.junit.jupiter.api.Test;
-import redis.ClientId;
 import redis.protocol.Command;
 
 import java.util.List;
@@ -10,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class InterpreterTest {
 
-    private final Interpreter interpreter = new Interpreter(ClientId.generate());
+    private final Interpreter interpreter = new Interpreter();
 
     @Test
     void respondsToPing() {

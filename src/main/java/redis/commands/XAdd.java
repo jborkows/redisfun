@@ -37,7 +37,7 @@ public final class XAdd {
             }
             try {
                 var id = Storage.STORAGE.add(key, new Entry(entryId, tuples));
-                return Messages.bulkMessage(id);
+                return Messages.bulkMessage(id.value());
             } catch (StorageException.StreamOperationsException.StreamKeyCannotBe00 _) {
                 return Messages.errorMessage("The ID specified in XADD must be greater than 0-0");
             } catch (StorageException.StreamOperationsException.StreamKeyMustBeGreaterThanLast |

@@ -10,12 +10,12 @@ import java.util.logging.Logger;
 
 class Dispatcher implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(Dispatcher.class.getName());
+    private final Interpreter interpreter;
     private Lexer lexer = new Lexer();
     private Parser parser = new Parser();
-    private Interpreter interpreter;
 
-    Dispatcher(ClientId clientId) {
-        this.interpreter = new Interpreter(clientId);
+    Dispatcher() {
+        this.interpreter = new Interpreter();
     }
 
     List<Effect> process(byte[] input, int read) {

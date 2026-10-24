@@ -112,8 +112,7 @@ public final class RedisServer implements AutoCloseable {
     private void handleClient(Socket clientSocket) {
         var buffer = new byte[1024];
         int bytesRead;
-        var clientId = ClientId.generate();
-        try (clientSocket; var dispatcher = new Dispatcher(clientId)) {
+        try (clientSocket; var dispatcher = new Dispatcher()) {
             while ((bytesRead = clientSocket.getInputStream().read(buffer)) != -1) {
                 var effects = dispatcher.process(buffer, bytesRead);
                 var outputStream = clientSocket.getOutputStream();

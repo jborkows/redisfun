@@ -149,14 +149,8 @@ public final class Storage {
         return lists.blockingPop(key);
     }
 
-    /**
-     *
-     * @param streamKey name of stream
-     * @param entry     entry added to stream identified with streamKey
-     * @return entryId
-     */
     @NonNull
-    public String add(String streamKey, Entry entry) throws StreamOperationsException {
+    public EntryId add(String streamKey, Entry entry) throws StreamOperationsException {
         return streams.add(streamKey, entry);
     }
 

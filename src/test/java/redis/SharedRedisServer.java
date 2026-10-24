@@ -68,6 +68,23 @@ final class SharedRedisServer {
         return cli(command.split(" ", -1));
     }
 
+    /**
+     * Runs several CLI-style commands on a single connection. Useful for
+     * connection-scoped state such as transactions (MULTI/EXEC/DISCARD).
+     */
+    static List<String> runOnSameConnection(String... commands) throws IOException {
+        var commandToSend = new ArrayList<String>();
+        for (var command : commands) {
+            var parts = command.split(" ", -1);
+            commandToSend.add("*" + parts.length);
+            for (var part : parts) {
+                commandToSend.add("$" + part.length());
+                commandToSend.add(part);
+            }
+        }
+        return sendCommand(commandToSend.toArray(new String[0]));
+    }
+
     static List<String> cli(String... command) throws IOException {
         var commandToSend = new ArrayList<String>();
         commandToSend.add("*" + command.length);

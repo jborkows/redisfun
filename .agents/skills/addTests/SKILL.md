@@ -13,7 +13,7 @@ DO NOT MAKE TEST PASS!
 
 To fetch scenario use
 
-```
+```bash
 codecrafters task
 ```
 

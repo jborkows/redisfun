@@ -1,0 +1,45 @@
+package redis;
+
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.TestMethodOrder;
+
+import java.io.IOException;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@TestMethodOrder(MethodOrderer.Random.class)
+class RedisServerMultiIntegrationTest {
+
+    @Test
+    void multiShouldReturnOk() throws IOException {
+        var response = SharedRedisServer.run("MULTI");
+        assertEquals(List.of("+OK"), response);
+    }
+
+    @Test
+    void execWithoutMultiShouldFail() throws IOException {
+        var response = SharedRedisServer.run("EXEC");
+        assertEquals(List.of("-ERR EXEC without MULTI"), response);
+    }
+
+    @Test
+    void multiWithArgumentsRespondsWithError() throws IOException {
+        var response = SharedRedisServer.run("MULTI extra");
+        assertEquals(List.of("-ERR wrong number of arguments for 'MULTI' command"), response);
+    }
+
+    @Test
+    void multiShouldQueueCommands(TestInfo testInfo) throws IOException {
+        var key = SharedRedisServer.key(testInfo);
+        var response = SharedRedisServer.runOnSameConnection(
+                "MULTI",
+                "SET %s 1".formatted(key),
+                "INCR %s".formatted(key)
+        );
+        assertEquals(List.of("+OK", "+QUEUED", "+QUEUED"), response);
+    }
+
+}

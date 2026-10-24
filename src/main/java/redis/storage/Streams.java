@@ -32,15 +32,8 @@ final class Streams {
         };
     }
 
-
-    /**
-     *
-     * @param streamKey name of stream
-     * @param entry     entry added to stream identified with streamKey
-     * @return entryId
-     */
-    public String add(String streamKey, Entry entry) throws StreamOperationsException {
-        var id = new AtomicReference<String>();
+    public EntryId add(String streamKey, Entry entry) throws StreamOperationsException {
+        var id = new AtomicReference<EntryId>();
         storage.mutate(streamKey, (aKey, v) -> {
             StreamValue streamValue;
             DataPersistency newPersistency;
@@ -53,7 +46,7 @@ final class Streams {
                 newPersistency = v;
             }
             var validEntry = validate(entry, streamValue);
-            id.set(validEntry.id());
+            id.set(new EntryId(validEntry.id()));
             streamValue.value().add(validEntry);
             return newPersistency;
         });

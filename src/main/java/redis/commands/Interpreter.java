@@ -1,6 +1,5 @@
 package redis.commands;
 
-import redis.ClientId;
 import redis.protocol.Command;
 import redis.storage.Storage;
 import redis.storage.StorageException;
@@ -10,11 +9,11 @@ import redis.storage.StorageException.OperationAllowedOnlyForSingleElement;
 import redis.storage.StorageException.StreamOperationsException.OperationAllowedOnlyForStreams;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.function.Function;
 
-public record Interpreter(ClientId clientId) implements AutoCloseable, Function<Command, Effect> {
+public final class Interpreter implements AutoCloseable, Function<Command, Effect> {
 
+    private final TransactionAware transactionAware = new TransactionAware(Interpreter::react);
 
     private static Effect parseException(String commandName, StorageException storageException) {
         return switch (storageException) {
@@ -50,10 +49,9 @@ public record Interpreter(ClientId clientId) implements AutoCloseable, Function<
         return Messages.bulkMessage(value);
     }
 
-    public Effect apply(Command command) {
-        var commandName = command.name().toUpperCase(Locale.ROOT);
+    private static Effect react(Command command) {
         try {
-            return switch (commandName) {
+            return switch (command.commandName()) {
                 case "PING" -> Messages.simpleMessage("PONG");
                 case "ECHO" -> echo(command.args());
                 case "GET" -> getCommand(command.args());
@@ -69,16 +67,20 @@ public record Interpreter(ClientId clientId) implements AutoCloseable, Function<
                 case XAdd.NAME -> XAdd.execute(command.args());
                 case XRange.NAME -> XRange.execute(command.args());
                 case XRead.NAME -> XRead.execute(command.args());
-                default -> Messages.errorMessage("Unknown command '%s'".formatted(commandName));
+                default -> Messages.errorMessage("Unknown command '%s'".formatted(command.commandName()));
             };
         } catch (StorageException storageException) {
-            return parseException(commandName, storageException);
+            return parseException(command.commandName(), storageException);
         }
+    }
+
+    public Effect apply(Command command) {
+        return transactionAware.apply(command);
     }
 
     @Override
     public void close() {
-
+        transactionAware.close();
     }
 
 }
