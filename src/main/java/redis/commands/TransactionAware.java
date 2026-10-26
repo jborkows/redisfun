@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 class TransactionAware implements Function<Command, Effect> {
+    //TODO add reentrant read write lock, add context of doing blocked operation
 
     private static final String EXEC_COMMAND = "EXEC";
     private static final String MULTI_COMMAND = "MULTI";
@@ -115,6 +116,8 @@ class TransactionAware implements Function<Command, Effect> {
 
     void close() {
         commandQueue.clear();
+        watchers.forEach(Storage.STORAGE::deregisterWatcher);
+        watchers.clear();
     }
 
     private enum ChangeObserved {
