@@ -18,5 +18,6 @@ codecrafters task
 ```
 
 For writing tests which do not including blocking see redis.RedisServerLpopIntegrationTest.
-For writing tests which include blocking see redis.RedisServerBLPOPIntegrationTest.
+For writing tests which include blocking see redis.RedisServerBLPOPIntegrationTest or
+redis.SharedRedisServerCommandInputIntegrationTest.
 

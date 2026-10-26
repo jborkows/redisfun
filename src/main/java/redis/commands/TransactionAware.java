@@ -1,9 +1,14 @@
 package redis.commands;
 
 import redis.protocol.Command;
+import redis.storage.Key;
+import redis.storage.Storage;
+import redis.storage.Watcher;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 class TransactionAware implements Function<Command, Effect> {
@@ -12,6 +17,9 @@ class TransactionAware implements Function<Command, Effect> {
     private static final String MULTI_COMMAND = "MULTI";
     private static final String DISCARD_COMMAND = "DISCARD";
     private static final String WATCH_COMMAND = "WATCH";
+    private final Map<Key, Watcher> watchers = new HashMap<>();
+    private final Map<Key, ChangeObserved> watched = new HashMap<>();
+
     private final Function<Command, Effect> processor;
     private final List<Command> commandQueue = new ArrayList<>();
     private boolean transactionInProgress = false;
@@ -48,6 +56,13 @@ class TransactionAware implements Function<Command, Effect> {
                     if (command.args().isEmpty()) {
                         yield Messages.wrongNumberOfArguments(command.name());
                     }
+                    command.args().forEach(commandArg -> {
+                        Watcher watcher = key -> watched.computeIfPresent(key, (_, _) -> ChangeObserved.CHANGED);
+                        var key = new Key(commandArg);
+                        watchers.put(key, watcher);
+                        watched.put(key, ChangeObserved.NO_CHANGE);
+                        Storage.STORAGE.registerWatcher(key, watcher);
+                    });
                     yield Messages.ok();
 
                 }
@@ -65,6 +80,11 @@ class TransactionAware implements Function<Command, Effect> {
                     if (!command.args().isEmpty()) {
                         yield Messages.wrongNumberOfArguments(command.name());
                     }
+                    if (ChangeObserved.CHANGED == transactionPreparations()) {
+                        transactionInProgress = false;
+                        yield Messages.nilArray();
+                    }
+
                     var messages = commandQueue.stream().map(processor).toList();
                     transactionInProgress = false;
                     yield Messages.array(messages);
@@ -85,8 +105,19 @@ class TransactionAware implements Function<Command, Effect> {
         }
     }
 
+    private ChangeObserved transactionPreparations() {
+        watchers.forEach(Storage.STORAGE::deregisterWatcher);
+        var changed = watched.entrySet().stream().filter(entry -> entry.getValue() == ChangeObserved.CHANGED).findAny().map(Map.Entry::getValue).orElse(ChangeObserved.NO_CHANGE);
+        watched.clear();
+        watchers.clear();
+        return changed;
+    }
 
     void close() {
         commandQueue.clear();
+    }
+
+    private enum ChangeObserved {
+        NO_CHANGE, CHANGED
     }
 }

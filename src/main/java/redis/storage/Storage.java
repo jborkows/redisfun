@@ -8,12 +8,15 @@ import redis.storage.DataPersistency.ExpiredAt;
 import redis.storage.StorageException.StreamOperationsException;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 public final class Storage {
 
@@ -24,6 +27,7 @@ public final class Storage {
     private final Streams streams = new Streams(this);
 
     private final Map<String, DataPersistency> db = new ConcurrentHashMap<>();
+    private final Map<Key, List<Watcher>> watchers = new ConcurrentHashMap<>();
 
     private Storage() {
     }
@@ -115,19 +119,19 @@ public final class Storage {
     }
 
     public void put(@NonNull String key, @NonNull String value) {
-        strings.put(key, value);
+        noReturnModification(new Key(key), () -> strings.put(key, value));
     }
 
     public void putExpirable(@NonNull String key, @NonNull String value, @NonNull Duration duration) {
-        strings.putExpirable(key, value, duration);
+        noReturnModification(new Key(key), () -> strings.putExpirable(key, value, duration));
     }
 
     public int addElement(@NonNull String key, @NonNull List<String> values) {
-        return lists.add(key, values);
+        return modification(new Key(key), () -> lists.add(key, values));
     }
 
     public int prependElements(@NonNull String key, @NonNull List<String> values) {
-        return lists.prepend(key, values);
+        return modification(new Key(key), () -> lists.prepend(key, values));
     }
 
     @NonNull
@@ -141,7 +145,7 @@ public final class Storage {
 
     @Nullable
     public List<String> pop(@NonNull String key, int howMany) {
-        return lists.pop(key, howMany);
+        return modification(new Key(key), () -> lists.pop(key, howMany));
     }
 
     @NonNull
@@ -151,7 +155,7 @@ public final class Storage {
 
     @NonNull
     public EntryId add(String streamKey, Entry entry) throws StreamOperationsException {
-        return streams.add(streamKey, entry);
+        return modification(new Key(streamKey), () -> streams.add(streamKey, entry));
     }
 
     @NullMarked
@@ -173,7 +177,39 @@ public final class Storage {
 
     @NullMarked
     public long increment(String key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
-        return strings.increment(key);
+        return modificationLong(new Key(key), () -> strings.increment(key));
     }
 
+    public void registerWatcher(Key key, Watcher watcher) {
+        watchers.compute(key, (k, v) -> v == null ? new ArrayList<>() : v).add(watcher);
+    }
+
+    public void deregisterWatcher(Key key, Watcher watcher) {
+        watchers.compute(key, (k, v) -> {
+            if (v == null) {
+                return null;
+            }
+            v.remove(watcher);
+            if (v.isEmpty()) {
+                return null;
+            } else {
+                return v;
+            }
+        });
+    }
+
+    private <T> T modification(Key key, Supplier<T> value){
+        var result = value.get();
+        watchers.getOrDefault(key, List.of()).forEach(watcher -> watcher.onValueChanged(key));
+        return result;
+    }
+    private long modificationLong(Key key, LongSupplier value){
+        var result = value.getAsLong();
+        watchers.getOrDefault(key, List.of()).forEach(watcher -> watcher.onValueChanged(key));
+        return result;
+    }
+    private void noReturnModification(Key key, Runnable value){
+        value.run();
+        watchers.getOrDefault(key, List.of()).forEach(watcher -> watcher.onValueChanged(key));
+    }
 }
