@@ -1,7 +1,8 @@
 package redis.commands;
 
-import redis.storage.StorageException.OnlyPositiveValues;
+import redis.storage.Key;
 import redis.storage.Storage;
+import redis.storage.StorageException.OnlyPositiveValues;
 
 import java.util.List;
 
@@ -16,7 +17,7 @@ public final class Lpop {
         if (!(args.size() == 1 || args.size() == 2)) {
             return Messages.wrongNumberOfArguments(NAME);
         }
-        var key = args.getFirst();
+        var key = new Key(args.getFirst());
         try {
             var howMany = switch (args.size()) {
                 case 2 -> Integer.parseInt(args.get(1));

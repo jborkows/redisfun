@@ -28,7 +28,7 @@ final class Lists {
     private static final Logger LOGGER = Logger.getLogger(Lists.class.getName());
 
     private final Storage storage;
-    private final Map<String, List<CompletableFuture<String>>> pops = new ConcurrentHashMap<>();
+    private final Map<Key, List<CompletableFuture<String>>> pops = new ConcurrentHashMap<>();
 
     Lists(Storage storage) {
         this.storage = storage;
@@ -56,16 +56,16 @@ final class Lists {
         return values.size() - index;
     }
 
-    int add(@NonNull String key, @NonNull List<String> values) {
+    int add(@NonNull Key key, @NonNull List<String> values) {
         return operateOnList(key, values, (list) -> list.addAll(values));
     }
 
-    int prepend(@NonNull String key, @NonNull List<String> values) {
+    int prepend(@NonNull Key key, @NonNull List<String> values) {
         var front = values.reversed();
         return operateOnList(key, front, (list) -> list.addAll(0, front));
     }
 
-    private int operateOnList(@NonNull String key, @NonNull List<String> values, @NonNull Consumer<List<String>> merger) {
+    private int operateOnList(@NonNull Key key, @NonNull List<String> values, @NonNull Consumer<List<String>> merger) {
         var wrapper = new AtomicInteger(0);
         storage.mutate(key, (_, v) -> {
             if (v == null) {
@@ -86,7 +86,7 @@ final class Lists {
     }
 
     @NonNull
-    List<String> sublist(@NonNull String key, int start, int stop) {
+    List<String> sublist(@NonNull Key key, int start, int stop) {
         var data = storage.lookup(key);
         if (data == null) {
             return List.of();
@@ -97,14 +97,14 @@ final class Lists {
         }
         var normalizedStart = normalizeIndex(values, start);
         var normalizedStop = Math.min(normalizeIndex(values, stop) + 1, values.size());
-        LOGGER.finer(() -> "For " + key + " start = " + start + " normalized = " + normalizedStart + " stop = " + stop + " normalized = " + normalizedStop);
+        LOGGER.finer(() -> "For " + key.value() + " start = " + start + " normalized = " + normalizedStart + " stop = " + stop + " normalized = " + normalizedStop);
         if (normalizedStart >= values.size() || normalizedStart > normalizedStop) {
             return List.of();
         }
         return List.copyOf(values.subList(normalizedStart, normalizedStop));
     }
 
-    int length(@NonNull String key) {
+    int length(@NonNull Key key) {
         var found = storage.lookup(key);
         if (found == null) {
             return 0;
@@ -113,7 +113,7 @@ final class Lists {
     }
 
     @Nullable
-    List<String> pop(@NonNull String key, int howMany) {
+    List<String> pop(@NonNull Key key, int howMany) {
         if (howMany < 1) {
             throw new OnlyPositiveValues();
         }
@@ -144,9 +144,9 @@ final class Lists {
     }
 
     @NonNull
-    FutureWithTimeoutCleanup<String> blockingPop(@NonNull String key) {
+    FutureWithTimeoutCleanup<String> blockingPop(@NonNull Key key) {
         var future = new CompletableFuture<String>();
-        LOGGER.finer(() -> "Blocking pop operation for " + key);
+        LOGGER.finer(() -> "Blocking pop operation for " + key.value());
         pops.compute(key, (_, acc) -> {
             if (acc == null) {
                 acc = new ArrayList<>();
@@ -156,7 +156,7 @@ final class Lists {
         });
         doBlockingPop(key);
         return FutureWithTimeoutCleanup.<String>builder(future)
-                .onSuccess(() -> storage.notifyWatchers(new Key(key)))
+                .onSuccess(() -> storage.notifyWatchers(key))
                 .withCleaning(() -> pops.compute(key, (_, awaiting) -> {
                     if (awaiting == null) {
                         return null;
@@ -170,7 +170,7 @@ final class Lists {
                 }));
     }
 
-    private void doBlockingPop(@NonNull String key) {
+    private void doBlockingPop(@NonNull Key key) {
         storage.mutate(key, (aKey, existing) -> {
             if (existing == null) {
                 return null;
@@ -186,7 +186,7 @@ final class Lists {
                     var howMany = Math.min(elements.size(), acc.size());
                     while (howMany-- > 0) {
                         var toComplete = acc.removeFirst();
-                        LOGGER.finer(() -> "Completing blocking for key = " + aKey);
+                        LOGGER.finer(() -> "Completing blocking for key = " + aKey.value());
                         toComplete.complete(elements.removeFirst());
                     }
                     return acc;

@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.storage.Key;
 import redis.storage.Storage;
 
 import org.jspecify.annotations.Nullable;
@@ -25,7 +26,7 @@ public final class SetCommand {
         if (hasInvalidOptions(options)) {
             return Messages.syntaxError();
         }
-        var key = args.get(0);
+        var key = new Key(args.get(0));
         var value = args.get(1);
         var expiry = expiryDuration(options);
         if (expiry != null) {

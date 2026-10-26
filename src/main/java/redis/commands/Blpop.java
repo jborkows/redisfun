@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.storage.Key;
 import redis.storage.Storage;
 
 import java.util.List;
@@ -19,7 +20,8 @@ public final class Blpop {
         if (args.size() != 2) {
             return Messages.wrongNumberOfArguments(NAME);
         }
-        var key = args.getFirst();
+        var keyString = args.getFirst();
+        var key = new Key(keyString);
         try {
             double howManySecondsToWait = Double.parseDouble(args.get(1));
             if (howManySecondsToWait < 0) {
@@ -34,13 +36,13 @@ public final class Blpop {
                 default -> promise.get(milliseconds, TimeUnit.MILLISECONDS);
             });
 
-            LOGGER.info(() -> "Blocking pop operation for " + key + " finished");
-            return Messages.bulkMessages(List.of(key, value));
+            LOGGER.info(() -> "Blocking pop operation for " + keyString + " finished");
+            return Messages.bulkMessages(List.of(keyString, value));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return Messages.errorMessage("Error while BLPOP '%s'".formatted(key));
+            return Messages.errorMessage("Error while BLPOP '%s'".formatted(keyString));
         } catch (ExecutionException e) {
-            return Messages.errorMessage("Error while BLPOP '%s'".formatted(key));
+            return Messages.errorMessage("Error while BLPOP '%s'".formatted(keyString));
         } catch (NumberFormatException e) {
             return Messages.wrongType("timeout should be 0 or positive");
         } catch (TimeoutException e) {

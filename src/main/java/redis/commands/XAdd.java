@@ -1,6 +1,7 @@
 package redis.commands;
 
 import redis.storage.Entry;
+import redis.storage.Key;
 import redis.storage.Storage;
 import redis.storage.StorageException;
 import redis.storage.Tuple;
@@ -19,7 +20,7 @@ public final class XAdd {
         if ((args.size() < 2)) {
             return Messages.wrongNumberOfArguments(NAME);
         }
-        var key = args.getFirst();
+        var key = new Key(args.getFirst());
 
         var arguments = args.subList(1, args.size());
 

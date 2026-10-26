@@ -2,6 +2,7 @@ package redis.commands;
 
 import org.jspecify.annotations.NullMarked;
 import redis.storage.Entry;
+import redis.storage.Key;
 import redis.storage.Storage;
 import redis.storage.StorageException;
 
@@ -77,8 +78,9 @@ public final class XRead {
             for (int i = 0; i < arraySeparation; i++) {
                 var counter = i;
                 futures.add(executorService.submit(() -> {
-                    var result = reader.read(keyIdsPairs.get(counter), keyIdsPairs.get(counter + arraySeparation));
-                    return new StreamEntry(keyIdsPairs.get(counter), result);
+                    var key = keyIdsPairs.get(counter);
+                    var result = reader.read(new Key(key), keyIdsPairs.get(counter + arraySeparation));
+                    return new StreamEntry(key, result);
                 }));
             }
             for (int i = 0; i < arraySeparation; i++) {
@@ -134,7 +136,7 @@ public final class XRead {
 
     @FunctionalInterface
     private interface StreamReader {
-        List<Entry> read(String key, String id) throws Exception;
+        List<Entry> read(Key key, String id) throws Exception;
     }
 
     private sealed interface ReadDuration {

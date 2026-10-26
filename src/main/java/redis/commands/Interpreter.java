@@ -1,6 +1,7 @@
 package redis.commands;
 
 import redis.protocol.Command;
+import redis.storage.Key;
 import redis.storage.Storage;
 import redis.storage.StorageException;
 import redis.storage.StorageException.CannotModifyType;
@@ -33,7 +34,7 @@ public final class Interpreter implements AutoCloseable, Function<Command, Effec
         if (args.size() != 1) {
             return Messages.wrongNumberOfArguments("get");
         }
-        var found = Storage.STORAGE.get(args.getFirst());
+        var found = Storage.STORAGE.get(new Key(args.getFirst()));
         if (found == null) {
             return Messages.nilMessage();
         } else {

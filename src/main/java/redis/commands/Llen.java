@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.storage.Key;
 import redis.storage.Storage;
 
 import java.util.List;
@@ -15,7 +16,7 @@ public final class Llen {
         if (args.size() != 1) {
             return Messages.wrongNumberOfArguments(NAME);
         }
-        var key = args.getFirst();
+        var key = new Key(args.getFirst());
         int count = Storage.STORAGE.lengthOf(key);
         return Messages.respInteger(count);
     }

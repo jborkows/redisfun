@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.storage.Key;
 import redis.storage.Storage;
 import redis.storage.StorageException;
 
@@ -16,7 +17,7 @@ public final class Incr {
         if (args.size() != 1) {
             return Messages.wrongNumberOfArguments(NAME);
         }
-        var key = args.getFirst();
+        var key = new Key(args.getFirst());
 
         try {
             var value = Storage.STORAGE.increment(key);

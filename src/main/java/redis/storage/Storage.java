@@ -26,7 +26,7 @@ public final class Storage {
     private final Lists lists = new Lists(this);
     private final Streams streams = new Streams(this);
 
-    private final Map<String, DataPersistency> db = new ConcurrentHashMap<>();
+    private final Map<Key, DataPersistency> db = new ConcurrentHashMap<>();
     private final Map<Key, List<Watcher>> watchers = new ConcurrentHashMap<>();
 
     private Storage() {
@@ -53,7 +53,7 @@ public final class Storage {
     }
 
     @Nullable
-    Value lookup(@NonNull String key) {
+    Value lookup(@NonNull Key key) {
         var found = db.computeIfPresent(key, (_, v) -> persistency(v));
         if (found == null) {
             return null;
@@ -61,11 +61,7 @@ public final class Storage {
         return extractFrom(found);
     }
 
-    /**
-     * Atomically replaces the entry under {@code key} (whether absent or present) using
-     * {@code remapping}. This is the unit of atomicity for every mutating operation.
-     */
-    void mutate(@NonNull String key, @NonNull BiFunction<String, DataPersistency, DataPersistency> remapping) {
+    void mutate(@NonNull Key key, @NonNull BiFunction<Key, DataPersistency, DataPersistency> remapping) {
         db.compute(key, (aKey, value) -> {
             if (value == null) {
                 return remapping.apply(key, null);
@@ -75,27 +71,15 @@ public final class Storage {
         });
     }
 
-    /**
-     * Like {@link #mutate}, but {@code remapping} runs only when a live (non-expired) entry
-     * is present. Expired entries are treated as absent: they are removed without invoking
-     * {@code remapping}, so the lambda never receives {@code null}.
-     */
-    void mutateIfPresent(@NonNull String key, @NonNull BiFunction<String, DataPersistency, DataPersistency> remapping) {
+    void mutateIfPresent(@NonNull Key key, @NonNull BiFunction<Key, DataPersistency, DataPersistency> remapping) {
         db.computeIfPresent(key, (aKey, value) -> {
             var live = persistency(value);
             return live == null ? null : remapping.apply(aKey, live);
         });
     }
 
-    /**
-     * Runs {@code reader} while holding the lock for {@code key}, but only when a live
-     * (non-expired) entry is present; expired entries are removed and treated as absent.
-     * Intended for read-only snapshots that must stay consistent with concurrent mutations.
-     *
-     * @return the reader's result, or {@code null} when the key is absent or expired
-     */
     @NullMarked
-    <T> @Nullable T readIfPresent(String key, Function<Value, T> reader) {
+    <T> @Nullable T readIfPresent(@NonNull Key key, Function<Value, T> reader) {
         var result = new AtomicReference<T>();
         db.computeIfPresent(key, (aKey, value) -> {
             var live = persistency(value);
@@ -109,75 +93,75 @@ public final class Storage {
     }
 
     @NonNull
-    public DataType type(@NonNull String key) {
+    public DataType type(@NonNull Key key) {
         return DataType.parse(lookup(key));
     }
 
     @Nullable
-    public String get(@NonNull String key) {
+    public String get(@NonNull Key key) {
         return strings.get(key);
     }
 
-    public void put(@NonNull String key, @NonNull String value) {
-        noReturnModification(new Key(key), () -> strings.put(key, value));
+    public void put(@NonNull Key key, @NonNull String value) {
+        noReturnModification(key, () -> strings.put(key, value));
     }
 
-    public void putExpirable(@NonNull String key, @NonNull String value, @NonNull Duration duration) {
-        noReturnModification(new Key(key), () -> strings.putExpirable(key, value, duration));
+    public void putExpirable(@NonNull Key key, @NonNull String value, @NonNull Duration duration) {
+        noReturnModification(key, () -> strings.putExpirable(key, value, duration));
     }
 
-    public int addElement(@NonNull String key, @NonNull List<String> values) {
-        return modification(new Key(key), () -> lists.add(key, values));
+    public int addElement(@NonNull Key key, @NonNull List<String> values) {
+        return modification(key, () -> lists.add(key, values));
     }
 
-    public int prependElements(@NonNull String key, @NonNull List<String> values) {
-        return modification(new Key(key), () -> lists.prepend(key, values));
+    public int prependElements(@NonNull Key key, @NonNull List<String> values) {
+        return modification(key, () -> lists.prepend(key, values));
     }
 
     @NonNull
-    public List<String> sublist(@NonNull String key, int start, int stop) {
+    public List<String> sublist(@NonNull Key key, int start, int stop) {
         return lists.sublist(key, start, stop);
     }
 
-    public int lengthOf(@NonNull String key) {
+    public int lengthOf(@NonNull Key key) {
         return lists.length(key);
     }
 
     @Nullable
-    public List<String> pop(@NonNull String key, int howMany) {
-        return modification(new Key(key), () -> lists.pop(key, howMany));
+    public List<String> pop(@NonNull Key key, int howMany) {
+        return modification(key, () -> lists.pop(key, howMany));
     }
 
     @NonNull
-    public FutureWithTimeoutCleanup<String> blockingPop(@NonNull String key) {
+    public FutureWithTimeoutCleanup<String> blockingPop(@NonNull Key key) {
         return lists.blockingPop(key);
     }
 
     @NonNull
-    public EntryId add(String streamKey, Entry entry) throws StreamOperationsException {
-        return modification(new Key(streamKey), () -> streams.add(streamKey, entry));
+    public EntryId add(Key streamKey, Entry entry) throws StreamOperationsException {
+        return modification(streamKey, () -> streams.add(streamKey, entry));
     }
 
     @NullMarked
-    public List<Entry> range(String key, String start, String end) {
+    public List<Entry> range(Key key, String start, String end) {
         var found = streams.range(key, start, end);
         return intoEntries(found);
     }
 
     @NullMarked
-    public List<Entry> readStreamFrom(String key, String id) {
+    public List<Entry> readStreamFrom(Key key, String id) {
         var found = streams.readSince(key, id);
         return intoEntries(found);
     }
 
     @NullMarked
-    public FutureWithTimeoutCleanup<List<Entry>> blockingReadStreamFrom(String key, String id) {
+    public FutureWithTimeoutCleanup<List<Entry>> blockingReadStreamFrom(Key key, String id) {
         return streams.blockingRead(key, id).map(Storage::intoEntries);
     }
 
     @NullMarked
-    public long increment(String key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
-        return modificationLong(new Key(key), () -> strings.increment(key));
+    public long increment(Key key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
+        return modificationLong(key, () -> strings.increment(key));
     }
 
     public void registerWatcher(Key key, Watcher watcher) {

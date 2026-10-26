@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.storage.Key;
 import redis.storage.Storage;
 import redis.storage.StorageException;
 
@@ -17,7 +18,7 @@ public final class XRange {
             return Messages.wrongNumberOfArguments(NAME);
         }
 
-        var key = args.get(0);
+        var key = new Key(args.get(0));
         var start = args.get(1);
         var end = args.get(2);
 

@@ -18,7 +18,7 @@ import java.util.function.Predicate;
 final class Streams {
 
     private final Storage storage;
-    private final Map<String, Map<StorageEntryKey, List<CompletableFuture<List<StorageEntry>>>>> pops = new ConcurrentHashMap<>();
+    private final Map<Key, Map<StorageEntryKey, List<CompletableFuture<List<StorageEntry>>>>> pops = new ConcurrentHashMap<>();
 
     Streams(Storage storage) {
         this.storage = storage;
@@ -32,7 +32,7 @@ final class Streams {
         };
     }
 
-    public EntryId add(String streamKey, Entry entry) throws StreamOperationsException {
+    public EntryId add(Key streamKey, Entry entry) throws StreamOperationsException {
         var id = new AtomicReference<EntryId>();
         storage.mutate(streamKey, (aKey, v) -> {
             StreamValue streamValue;
@@ -60,19 +60,19 @@ final class Streams {
     }
 
     @NullMarked
-    public List<StorageEntry> range(String key, String start, String end) {
+    public List<StorageEntry> range(Key key, String start, String end) {
         var startKey = StorageEntryKey.parse(start);
         var endKey = StorageEntryKey.parse(end);
         return query(key, i -> i.key().compareTo(startKey) >= 0 && i.key().compareTo(endKey) <= 0);
     }
 
     @NullMarked
-    public List<StorageEntry> readSince(String key, String id) {
+    public List<StorageEntry> readSince(Key key, String id) {
         var startKey = StorageEntryKey.parse(id);
         return query(key, i -> i.key().compareTo(startKey) > 0);
     }
 
-    private List<StorageEntry> query(String key, Predicate<StorageEntry> predicate) {
+    private List<StorageEntry> query(Key key, Predicate<StorageEntry> predicate) {
         var snapshot = storage.readIfPresent(key, value -> List.copyOf(expect(value).value()));
         if (snapshot == null || snapshot.isEmpty()) {
             return List.of();
@@ -80,7 +80,7 @@ final class Streams {
         return snapshot.stream().filter(predicate).toList();
     }
 
-    public FutureWithTimeoutCleanup<List<StorageEntry>> blockingRead(String key, String id) {
+    public FutureWithTimeoutCleanup<List<StorageEntry>> blockingRead(Key key, String id) {
         var existing = storage.lookup(key);
         if (existing != null && !(existing instanceof StreamValue)) {
             throw new OperationAllowedOnlyForStreams();
@@ -120,7 +120,7 @@ final class Streams {
                 }));
     }
 
-    private void doBlockingRead(@NonNull String key) {
+    private void doBlockingRead(@NonNull Key key) {
         storage.mutate(key, (aKey, existing) -> {
             if (existing == null) {
                 return null;

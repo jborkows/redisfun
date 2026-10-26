@@ -34,7 +34,7 @@ final class Strings {
     }
 
     @Nullable
-    String get(@NonNull String key) {
+    String get(@NonNull Key key) {
         var value = storage.lookup(key);
         if (value == null) {
             return null;
@@ -45,21 +45,21 @@ final class Strings {
         };
     }
 
-    void put(@NonNull String key, @NonNull String value) {
+    void put(@NonNull Key key, @NonNull String value) {
         insert(key, new Eternal(new StringValue(value)));
     }
 
-    void putExpirable(@NonNull String key, @NonNull String value, @NonNull Duration duration) {
+    void putExpirable(@NonNull Key key, @NonNull String value, @NonNull Duration duration) {
         var future = System.currentTimeMillis() + duration.toMillis();
         insert(key, new ExpiredAt(new StringValue(value), future));
     }
 
-    private void insert(@NonNull String key, @NonNull DataPersistency data) {
+    private void insert(@NonNull Key key, @NonNull DataPersistency data) {
         mutate(key, () -> data, (_, _) -> data);
     }
 
     @NullMarked
-    public long increment(String key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
+    public long increment(Key key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
         var atomicLong = new AtomicLong();
         mutate(key, () -> {
             atomicLong.set(1L);
@@ -77,7 +77,7 @@ final class Strings {
     }
 
     @NullMarked
-    private void mutate(String key, Supplier<DataPersistency> defaultValue, BiFunction<DataPersistency, String, DataPersistency> mutator) {
+    private void mutate(Key key, Supplier<DataPersistency> defaultValue, BiFunction<DataPersistency, String, DataPersistency> mutator) {
         storage.mutate(key, (_, v) -> {
             if (v == null) {
                 return defaultValue.get();

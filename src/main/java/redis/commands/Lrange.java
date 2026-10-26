@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.storage.Key;
 import redis.storage.Storage;
 
 import java.util.List;
@@ -15,7 +16,7 @@ public final class Lrange {
         if (args.size() != 3) {
             return Messages.wrongNumberOfArguments(NAME);
         }
-        var key = args.getFirst();
+        var key = new Key(args.getFirst());
         var start = args.get(1);
         var end = args.get(2);
         try {
