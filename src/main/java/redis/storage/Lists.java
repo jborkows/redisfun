@@ -155,8 +155,9 @@ final class Lists {
             return acc;
         });
         doBlockingPop(key);
-        return new FutureWithTimeoutCleanup<>(future, () ->
-                pops.compute(key, (_, awaiting) -> {
+        return FutureWithTimeoutCleanup.<String>builder(future)
+                .onSuccess(() -> storage.notifyWatchers(new Key(key)))
+                .withCleaning(() -> pops.compute(key, (_, awaiting) -> {
                     if (awaiting == null) {
                         return null;
                     }
@@ -166,8 +167,7 @@ final class Lists {
                     } else {
                         return awaiting;
                     }
-                })
-        );
+                }));
     }
 
     private void doBlockingPop(@NonNull String key) {

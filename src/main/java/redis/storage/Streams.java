@@ -103,8 +103,8 @@ final class Streams {
         });
         doBlockingRead(key);
 
-        return new FutureWithTimeoutCleanup<>(future, () ->
-                pops.compute(key, (_, awaiting) -> {
+        return FutureWithTimeoutCleanup.<List<StorageEntry>>builder(future)
+                .onlyCleaning(() -> pops.compute(key, (_, awaiting) -> {
                     if (awaiting == null) {
                         return null;
                     }
@@ -117,8 +117,7 @@ final class Streams {
                     } else {
                         return awaiting;
                     }
-                })
-        );
+                }));
     }
 
     private void doBlockingRead(@NonNull String key) {

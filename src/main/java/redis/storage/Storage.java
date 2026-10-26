@@ -198,18 +198,24 @@ public final class Storage {
         });
     }
 
-    private <T> T modification(Key key, Supplier<T> value){
+    private <T> T modification(Key key, Supplier<T> value) {
         var result = value.get();
-        watchers.getOrDefault(key, List.of()).forEach(watcher -> watcher.onValueChanged(key));
+        notifyWatchers(key);
         return result;
     }
-    private long modificationLong(Key key, LongSupplier value){
+
+    private long modificationLong(Key key, LongSupplier value) {
         var result = value.getAsLong();
-        watchers.getOrDefault(key, List.of()).forEach(watcher -> watcher.onValueChanged(key));
+        notifyWatchers(key);
         return result;
     }
-    private void noReturnModification(Key key, Runnable value){
+
+    private void noReturnModification(Key key, Runnable value) {
         value.run();
+        notifyWatchers(key);
+    }
+
+    void notifyWatchers(Key key) {
         watchers.getOrDefault(key, List.of()).forEach(watcher -> watcher.onValueChanged(key));
     }
 }
