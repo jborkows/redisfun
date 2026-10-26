@@ -12,8 +12,6 @@ import java.util.Map;
 import java.util.function.Function;
 
 class TransactionAware implements Function<Command, Effect> {
-    //TODO add reentrant read write lock, add context of doing blocked operation
-
     private static final String EXEC_COMMAND = "EXEC";
     private static final String MULTI_COMMAND = "MULTI";
     private static final String DISCARD_COMMAND = "DISCARD";
@@ -86,6 +84,7 @@ class TransactionAware implements Function<Command, Effect> {
                         yield Messages.nilArray();
                     }
 
+                    //Yes I know is not atomic, if I would start from scratch probably I would use actor model like behavior
                     var messages = commandQueue.stream().map(processor).toList();
                     transactionInProgress = false;
                     yield Messages.array(messages);
