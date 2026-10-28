@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static redis.RedisServer.maxConnectionsChanger;
 
 /**
  * Redis-style "maxclients" behavior of a dedicated server instance (not the
@@ -24,6 +25,41 @@ class RedisServerMaxClientsIntegrationTest {
     private static final int CAP = 5;
     private static final List<String> MAX_CLIENTS_ERROR =
             List.of("-ERR max number of clients reached");
+
+    private static RedisServer startServerWith() throws IOException {
+        var server = new RedisServer(new RedisServer.Config(maxConnectionsChanger(CAP)));
+        server.start();
+        return server;
+    }
+
+    /**
+     * Reads one reply until the server closes the connection; the reject
+     * path is a single burst (error line + close), so no timeout trickery
+     * from {@link SharedRedisServer#sendCommand} is needed here.
+     */
+    private static List<String> readReply(Socket socket) throws IOException {
+        socket.setSoTimeout(300);
+        var response = new java.io.ByteArrayOutputStream();
+        var buffer = new byte[1024];
+        var in = socket.getInputStream();
+        try {
+            while (true) {
+                var read = in.read(buffer);
+                if (read == -1) {
+                    break;
+                }
+                response.write(buffer, 0, read);
+            }
+        } catch (SocketTimeoutException ignored) {
+            // server stopped sending; evaluate what has been received
+        }
+        var text = response.toString(StandardCharsets.ISO_8859_1);
+        var lines = new ArrayList<>(Arrays.asList(text.split("\r\n", -1)));
+        if (!lines.isEmpty() && lines.getLast().isEmpty()) {
+            lines.removeLast();
+        }
+        return lines;
+    }
 
     @Test
     @Timeout(10)
@@ -79,40 +115,5 @@ class RedisServerMaxClientsIntegrationTest {
                 }
             }
         }
-    }
-
-    private static RedisServer startServerWith() throws IOException {
-        var server = new RedisServer(0, CAP);
-        server.start();
-        return server;
-    }
-
-    /**
-     * Reads one reply until the server closes the connection; the reject
-     * path is a single burst (error line + close), so no timeout trickery
-     * from {@link SharedRedisServer#sendCommand} is needed here.
-     */
-    private static List<String> readReply(Socket socket) throws IOException {
-        socket.setSoTimeout(300);
-        var response = new java.io.ByteArrayOutputStream();
-        var buffer = new byte[1024];
-        var in = socket.getInputStream();
-        try {
-            while (true) {
-                var read = in.read(buffer);
-                if (read == -1) {
-                    break;
-                }
-                response.write(buffer, 0, read);
-            }
-        } catch (SocketTimeoutException ignored) {
-            // server stopped sending; evaluate what has been received
-        }
-        var text = response.toString(StandardCharsets.ISO_8859_1);
-        var lines = new ArrayList<>(Arrays.asList(text.split("\r\n", -1)));
-        if (!lines.isEmpty() && lines.getLast().isEmpty()) {
-            lines.removeLast();
-        }
-        return lines;
     }
 }

@@ -6,12 +6,12 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.concurrent.Semaphore;
 import java.util.logging.Logger;
 
 public final class RedisServer implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(RedisServer.class.getName());
-    private static final int DEFAULT_MAX_CLIENTS = Integer.getInteger("redis.maxclients", 1000);
     private final int requestedPort;
     private final Semaphore clientSlots;
     private final Dispatcher dispatcher = new Dispatcher();
@@ -19,13 +19,9 @@ public final class RedisServer implements AutoCloseable {
     private Thread acceptThread;
     private volatile boolean running;
 
-    public RedisServer(int port) {
-        this(port, DEFAULT_MAX_CLIENTS);
-    }
-
-    RedisServer(int port, int maxClients) {
-        this.requestedPort = port;
-        this.clientSlots = new Semaphore(maxClients);
+    public RedisServer(Config config) {
+        this.requestedPort = config.port;
+        this.clientSlots = new Semaphore(config.maxConnections);
     }
 
     /**
@@ -33,7 +29,27 @@ public final class RedisServer implements AutoCloseable {
      * Use {@link #getPort()} after {@link #start()} to learn the actual port.
      */
     public static RedisServer onRandomPort() {
-        return new RedisServer(0);
+        return new RedisServer(new Config());
+    }
+
+    public static ConfigChanger portChanger(int port) {
+        return new ConfigChanger.PortChanger(port);
+    }
+
+    public static ConfigChanger maxConnectionsChanger(int maxConnections) {
+        return new ConfigChanger.MaxConnectionsChanger(maxConnections);
+    }
+
+    public static RedisServer redisServer(ConfigChanger... configChangers) {
+        var config = new Config();
+        for (var configChanger : configChangers) {
+            configChanger.modify(config);
+        }
+        return new RedisServer(config);
+    }
+
+    public static RedisServer redisServer(Collection<ConfigChanger> configChangers) {
+        return redisServer(configChangers.toArray(new ConfigChanger[0]));
     }
 
     public synchronized void start() throws IOException {
@@ -138,5 +154,38 @@ public final class RedisServer implements AutoCloseable {
             }
         }
         dispatcher.close();
+    }
+
+    public sealed interface ConfigChanger {
+        void modify(Config config);
+
+        record PortChanger(int port) implements ConfigChanger {
+            @Override
+            public void modify(Config config) {
+                config.port = port;
+            }
+        }
+
+        record MaxConnectionsChanger(int maxConnections) implements ConfigChanger {
+            @Override
+            public void modify(Config config) {
+                config.maxConnections = maxConnections;
+            }
+        }
+    }
+
+    public static class Config {
+
+        int port;
+
+        int maxConnections;
+
+        public Config(ConfigChanger... changes) {
+            port = 0;
+            maxConnections = Integer.getInteger("redis.maxclients", 1000);
+            for (ConfigChanger changer : changes) {
+                changer.modify(this);
+            }
+        }
     }
 }

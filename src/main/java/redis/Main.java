@@ -1,8 +1,12 @@
 package redis;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static redis.RedisServer.portChanger;
+import static redis.RedisServer.redisServer;
 
 public class Main {
     private static final Logger logger = Logger.getLogger(Main.class.getName());
@@ -12,9 +16,10 @@ public class Main {
         Logging.configureFromSystemProperty();
         logger.info("Logs from your program will appear here!");
 
-        int port = 6379;
+        var options = new ArrayList<>(CliParser.parse(args));
+        options.add(0, portChanger(6379));
         @SuppressWarnings("resource")
-        var server = new RedisServer(port);
+        var server = redisServer(options);
         try {
             server.start();
         } catch (IOException e) {
