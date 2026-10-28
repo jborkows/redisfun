@@ -10,9 +10,8 @@ import redis.storage.StorageException.OperationAllowedOnlyForSingleElement;
 import redis.storage.StorageException.StreamOperationsException.OperationAllowedOnlyForStreams;
 
 import java.util.List;
-import java.util.function.Function;
 
-public final class Interpreter implements AutoCloseable, Function<Command, Effect> {
+public final class Interpreter implements AutoCloseable {
 
     private final TransactionAware transactionAware = new TransactionAware(Interpreter::react);
 
@@ -50,9 +49,9 @@ public final class Interpreter implements AutoCloseable, Function<Command, Effec
         return Messages.bulkMessage(value);
     }
 
-    private static Effect react(Command command) {
+    private static void react(Command command, EffectChannel consumer) {
         try {
-            return switch (command.commandName()) {
+            consumer.accept(switch (command.commandName()) {
                 case "PING" -> Messages.simpleMessage("PONG");
                 case "ECHO" -> echo(command.args());
                 case "GET" -> getCommand(command.args());
@@ -69,14 +68,14 @@ public final class Interpreter implements AutoCloseable, Function<Command, Effec
                 case XRange.NAME -> XRange.execute(command.args());
                 case XRead.NAME -> XRead.execute(command.args());
                 default -> Messages.errorMessage("Unknown command '%s'".formatted(command.commandName()));
-            };
+            });
         } catch (StorageException storageException) {
-            return parseException(command.commandName(), storageException);
+            consumer.accept(parseException(command.commandName(), storageException));
         }
     }
 
-    public Effect apply(Command command) {
-        return transactionAware.apply(command);
+    public void apply(Command command, EffectChannel consumer) {
+        transactionAware.apply(command, consumer);
     }
 
     @Override

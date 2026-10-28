@@ -22,7 +22,11 @@ class Dispatcher implements AutoCloseable {
         logger.fine(() -> "Received: " + new String(input, 0, read));
         var tokens = extractTokens(input, read);
         var commands = parseTokens(tokens);
-        return commands.stream().map(interpreter).toList();
+        var effects = new ArrayList<Effect>();
+        for (var command : commands) {
+            interpreter.apply(command, effects::add);
+        }
+        return List.copyOf(effects);
     }
 
     private List<Command> parseTokens(List<Token> tokens) {

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import redis.protocol.Command;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -11,75 +12,81 @@ class InterpreterTest {
 
     private final Interpreter interpreter = new Interpreter();
 
+    private Effect apply(Command command) {
+        var effect = new AtomicReference<Effect>();
+        interpreter.apply(command, effect::set);
+        return effect.get();
+    }
+
     @Test
     void respondsToPing() {
-        var effect = interpreter.apply(new Command("PING", List.of()));
+        var effect = apply(new Command("PING", List.of()));
         assertEquals(new Effect.SimpleString("PONG"), effect);
     }
 
     @Test
     void echoesBackTheArgument() {
-        var effect = interpreter.apply(new Command("ECHO", List.of("hey")));
+        var effect = apply(new Command("ECHO", List.of("hey")));
         assertEquals(new Effect.BulkString("hey"), effect);
     }
 
     @Test
     void echoesValueStartingWithStar() {
-        var effect = interpreter.apply(new Command("ECHO", List.of("*foo")));
+        var effect = apply(new Command("ECHO", List.of("*foo")));
         assertEquals(new Effect.BulkString("*foo"), effect);
     }
 
     @Test
     void echoesValueStartingWithDollar() {
-        var effect = interpreter.apply(new Command("ECHO", List.of("$XXXX")));
+        var effect = apply(new Command("ECHO", List.of("$XXXX")));
         assertEquals(new Effect.BulkString("$XXXX"), effect);
     }
 
     @Test
     void respondsWithErrorForEchoWithoutArguments() {
-        var effect = interpreter.apply(new Command("ECHO", List.of()));
+        var effect = apply(new Command("ECHO", List.of()));
         assertEquals(new Effect.Error("wrong number of arguments for 'echo' command"), effect);
     }
 
     @Test
     void respondsWithErrorForEchoWithTooManyArguments() {
-        var effect = interpreter.apply(new Command("ECHO", List.of("a", "b")));
+        var effect = apply(new Command("ECHO", List.of("a", "b")));
         assertEquals(new Effect.Error("wrong number of arguments for 'echo' command"), effect);
     }
 
     @Test
     void respondsWithErrorForGetWithoutArguments() {
-        var effect = interpreter.apply(new Command("GET", List.of()));
+        var effect = apply(new Command("GET", List.of()));
         assertEquals(new Effect.Error("wrong number of arguments for 'get' command"), effect);
     }
 
     @Test
     void respondsWithErrorForGetWithTooManyArguments() {
-        var effect = interpreter.apply(new Command("GET", List.of("a", "b")));
+        var effect = apply(new Command("GET", List.of("a", "b")));
         assertEquals(new Effect.Error("wrong number of arguments for 'get' command"), effect);
     }
 
     @Test
     void respondsWithErrorForSetWithMissingValue() {
-        var effect = interpreter.apply(new Command("SET", List.of("a")));
+        var effect = apply(new Command("SET", List.of("a")));
         assertEquals(new Effect.Error("wrong number of arguments for '" + SetCommand.NAME + "' command"), effect);
     }
 
     @Test
     void acceptsSetWithExpiryOption() {
-        var effect = interpreter.apply(new Command("SET", List.of("a", "b", "PX", "5000")));
+        var effect = apply(new Command("SET", List.of("a", "b", "PX", "5000")));
         assertEquals(Messages.ok(), effect);
     }
 
     @Test
     void respondsWithSyntaxErrorForSetExpiryWithoutTime() {
-        var effect = interpreter.apply(new Command("SET", List.of("a", "b", "PX")));
+        var effect = apply(new Command("SET", List.of("a", "b", "PX")));
         assertEquals(new Effect.Error("syntax error"), effect);
     }
 
     @Test
     void respondsWithSyntaxErrorForSetWithBothExAndPx() {
-        var effect = interpreter.apply(new Command("SET", List.of("a", "b", "EX", "5", "PX", "5000")));
+        var effect = apply(new Command("SET", List.of("a", "b", "EX", "5", "PX", "5000")));
         assertEquals(new Effect.Error("syntax error"), effect);
     }
 
