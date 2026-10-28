@@ -4,7 +4,7 @@ import org.jspecify.annotations.NonNull;
 
 import java.util.Comparator;
 
-record StorageEntryKey(long milliseconds, long sequenceNumber) implements Comparable<StorageEntryKey> {
+public record StorageEntryKey(long milliseconds, long sequenceNumber) implements Comparable<StorageEntryKey> {
 
     private static final Comparator<StorageEntryKey> COMPARATOR = Comparator
             .comparingLong(StorageEntryKey::milliseconds)

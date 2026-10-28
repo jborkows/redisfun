@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 
 import java.util.List;
 
@@ -12,18 +11,19 @@ public final class Type {
     private Type() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() != 1) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var key = new Key(args.getFirst());
-        var type = Storage.STORAGE.type(key);
+        var type = context.storage().type(key);
         var displayableType = switch (type) {
             case STRING -> "string";
             case LIST -> "list";
             case STREAM -> "stream";
             case NONE -> "none";
         };
-        return Messages.simpleMessage(displayableType);
+        context.channel().accept(Messages.simpleMessage(displayableType));
     }
 }

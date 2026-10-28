@@ -10,10 +10,20 @@ import redis.storage.StorageException.OperationAllowedOnlyForSingleElement;
 import redis.storage.StorageException.StreamOperationsException.OperationAllowedOnlyForStreams;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public final class Interpreter implements AutoCloseable {
 
-    private final TransactionAware transactionAware = new TransactionAware(Interpreter::react);
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService schedulerExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final Storage storage = new Storage();
+    private final Scheduler scheduler = (task, delayMillis) -> schedulerExecutor.schedule(
+            () -> executor.submit(task), delayMillis, TimeUnit.MILLISECONDS
+    );
+    private final TransactionAware transactionAware = new TransactionAware(storage, this::react);
 
     private static Effect parseException(String commandName, StorageException storageException) {
         return switch (storageException) {
@@ -29,11 +39,11 @@ public final class Interpreter implements AutoCloseable {
         };
     }
 
-    private static Effect getCommand(List<String> args) {
+    private static Effect getCommand(List<String> args, CommandContext context) {
         if (args.size() != 1) {
             return Messages.wrongNumberOfArguments("get");
         }
-        var found = Storage.STORAGE.get(new Key(args.getFirst()));
+        var found = context.storage().get(new Key(args.getFirst()));
         if (found == null) {
             return Messages.nilMessage();
         } else {
@@ -49,38 +59,42 @@ public final class Interpreter implements AutoCloseable {
         return Messages.bulkMessage(value);
     }
 
-    private static void react(Command command, EffectChannel consumer) {
+    private void react(Command command, EffectChannel channel) {
+        var context = new CommandContext(storage, scheduler, channel);
         try {
-            consumer.accept(switch (command.commandName()) {
-                case "PING" -> Messages.simpleMessage("PONG");
-                case "ECHO" -> echo(command.args());
-                case "GET" -> getCommand(command.args());
-                case Incr.NAME -> Incr.execute(command.args());
-                case SetCommand.NAME -> SetCommand.execute(command.args());
-                case Rpush.NAME -> Rpush.execute(command.args());
-                case Lrange.NAME -> Lrange.execute(command.args());
-                case Lpush.NAME -> Lpush.execute(command.args());
-                case Llen.NAME -> Llen.execute(command.args());
-                case Lpop.NAME -> Lpop.execute(command.args());
-                case Blpop.NAME -> Blpop.execute(command.args());
-                case Type.NAME -> Type.execute(command.args());
-                case XAdd.NAME -> XAdd.execute(command.args());
-                case XRange.NAME -> XRange.execute(command.args());
-                case XRead.NAME -> XRead.execute(command.args());
-                default -> Messages.errorMessage("Unknown command '%s'".formatted(command.commandName()));
-            });
+            switch (command.commandName()) {
+                case "PING" -> channel.accept(Messages.simpleMessage("PONG"));
+                case "ECHO" -> channel.accept(echo(command.args()));
+                case "GET" -> channel.accept(getCommand(command.args(), context));
+                case Incr.NAME -> Incr.execute(command.args(), context);
+                case SetCommand.NAME -> SetCommand.execute(command.args(), context);
+                case Rpush.NAME -> Rpush.execute(command.args(), context);
+                case Lrange.NAME -> Lrange.execute(command.args(), context);
+                case Lpush.NAME -> Lpush.execute(command.args(), context);
+                case Llen.NAME -> Llen.execute(command.args(), context);
+                case Lpop.NAME -> Lpop.execute(command.args(), context);
+                case Blpop.NAME -> Blpop.execute(command.args(), context);
+                case Type.NAME -> Type.execute(command.args(), context);
+                case XAdd.NAME -> XAdd.execute(command.args(), context);
+                case XRange.NAME -> XRange.execute(command.args(), context);
+                case XRead.NAME -> XRead.execute(command.args(), context);
+                default ->
+                        channel.accept(Messages.errorMessage("Unknown command '%s'".formatted(command.commandName())));
+            }
         } catch (StorageException storageException) {
-            consumer.accept(parseException(command.commandName(), storageException));
+            channel.accept(parseException(command.commandName(), storageException));
         }
     }
 
     public void apply(Command command, EffectChannel consumer) {
-        transactionAware.apply(command, consumer);
+        executor.submit(() -> transactionAware.apply(command, consumer));
     }
 
     @Override
     public void close() {
         transactionAware.close();
+        schedulerExecutor.shutdown();
+        executor.shutdown();
     }
 
 }

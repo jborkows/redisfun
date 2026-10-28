@@ -1,12 +1,8 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 
 public final class Blpop {
@@ -16,37 +12,35 @@ public final class Blpop {
     private Blpop() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() != 2) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var keyString = args.getFirst();
         var key = new Key(keyString);
         try {
             double howManySecondsToWait = Double.parseDouble(args.get(1));
             if (howManySecondsToWait < 0) {
-                return Messages.wrongType("timeout should be 0 or positive.");
+                context.channel().accept(Messages.wrongType("timeout should be 0 or positive."));
+                return;
             } else if (howManySecondsToWait > 60 * 60) {
-                return Messages.wrongType("timeout too big");
+                context.channel().accept(Messages.wrongType("timeout too big"));
+                return;
             }
             int milliseconds = (int) Math.round(howManySecondsToWait * 1000);
-            var aPromise = Storage.STORAGE.blockingPop(key);
-            var value = aPromise.work(promise -> switch (milliseconds) {
-                case 0 -> promise.get();
-                default -> promise.get(milliseconds, TimeUnit.MILLISECONDS);
-            });
-
-            LOGGER.info(() -> "Blocking pop operation for " + keyString + " finished");
-            return Messages.bulkMessages(List.of(keyString, value));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return Messages.errorMessage("Error while BLPOP '%s'".formatted(keyString));
-        } catch (ExecutionException e) {
-            return Messages.errorMessage("Error while BLPOP '%s'".formatted(keyString));
+            context.storage().blockingPop(
+                    key,
+                    value -> {
+                        LOGGER.info(() -> "Blocking pop operation for " + keyString + " finished");
+                        context.channel().accept(Messages.bulkMessages(List.of(keyString, value)));
+                    },
+                    () -> context.channel().accept(Messages.nilArray()),
+                    context.scheduler(),
+                    milliseconds
+            );
         } catch (NumberFormatException e) {
-            return Messages.wrongType("timeout should be 0 or positive");
-        } catch (TimeoutException e) {
-            return Messages.nilArray();
+            context.channel().accept(Messages.wrongType("timeout should be 0 or positive"));
         }
     }
 }

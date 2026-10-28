@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 
 import java.util.List;
 
@@ -12,18 +11,19 @@ public final class Lrange {
     private Lrange() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() != 3) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var key = new Key(args.getFirst());
         var start = args.get(1);
         var end = args.get(2);
         try {
-            var sublist = Storage.STORAGE.sublist(key, Integer.parseInt(start), Integer.parseInt(end));
-            return Messages.bulkMessages(sublist);
+            var sublist = context.storage().sublist(key, Integer.parseInt(start), Integer.parseInt(end));
+            context.channel().accept(Messages.bulkMessages(sublist));
         } catch (NumberFormatException e) {
-            return Messages.wrongType("Both start and end have to be numbers");
+            context.channel().accept(Messages.wrongType("Both start and end have to be numbers"));
         }
     }
 

@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 
 import org.jspecify.annotations.Nullable;
 
@@ -18,23 +17,25 @@ public final class SetCommand {
     private SetCommand() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() < 2) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var options = args.subList(2, args.size());
         if (hasInvalidOptions(options)) {
-            return Messages.syntaxError();
+            context.channel().accept(Messages.syntaxError());
+            return;
         }
         var key = new Key(args.get(0));
         var value = args.get(1);
         var expiry = expiryDuration(options);
         if (expiry != null) {
-            Storage.STORAGE.putExpirable(key, value, expiry);
+            context.storage().putExpirable(key, value, expiry);
         } else {
-            Storage.STORAGE.put(key, value);
+            context.storage().put(key, value);
         }
-        return Messages.ok();
+        context.channel().accept(Messages.ok());
     }
 
     private static @Nullable Duration expiryDuration(List<String> options) {

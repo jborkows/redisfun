@@ -1,34 +1,31 @@
 package redis.storage;
 
-import redis.storage.DataPersistency.Eternal;
-import redis.storage.Value.ListValue;
-
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import redis.commands.Scheduler;
+import redis.storage.DataPersistency.Eternal;
 import redis.storage.StorageException.CannotModifyType;
 import redis.storage.StorageException.OnlyPositiveValues;
 import redis.storage.StorageException.OperationAllowedOnlyForLists;
+import redis.storage.Value.ListValue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 /**
  * All list-shaped operations, including blocking-pop waiters.
- * Atomicity comes from {@link Storage#mutate}; this class never touches the keyspace directly.
+ * All access is serialised by the single actor thread.
  */
 final class Lists {
 
     private static final Logger LOGGER = Logger.getLogger(Lists.class.getName());
 
     private final Storage storage;
-    private final Map<Key, List<CompletableFuture<String>>> pops = new ConcurrentHashMap<>();
+    private final Map<Key, List<Waiter<String>>> pops = new HashMap<>();
 
     Lists(Storage storage) {
         this.storage = storage;
@@ -36,10 +33,10 @@ final class Lists {
 
     @NonNull
     private static ListValue expectList(@NonNull Value value) {
-        return switch (value) {
-            case ListValue listValue -> listValue;
-            default -> throw new OperationAllowedOnlyForLists();
-        };
+        if (value instanceof ListValue listValue) {
+            return listValue;
+        }
+        throw new OperationAllowedOnlyForLists();
     }
 
     private static int normalizeIndex(@NonNull List<String> values, int index) {
@@ -66,23 +63,21 @@ final class Lists {
     }
 
     private int operateOnList(@NonNull Key key, @NonNull List<String> values, @NonNull Consumer<List<String>> merger) {
-        var wrapper = new AtomicInteger(0);
+        var wrapper = new int[]{0};
         storage.mutate(key, (_, v) -> {
             if (v == null) {
-                wrapper.set(values.size());
+                wrapper[0] = values.size();
                 return new Eternal(new ListValue(new ArrayList<>(values)));
             }
-            return switch (Storage.extractFrom(v)) {
-                case ListValue listValue -> {
-                    merger.accept(listValue.value());
-                    wrapper.set(listValue.value().size());
-                    yield v;
-                }
-                default -> throw CannotModifyType.cannotModifyFromElement();
-            };
+            if (Storage.extractFrom(v) instanceof ListValue(List<String> list)) {
+                merger.accept(list);
+                wrapper[0] = list.size();
+                return v;
+            }
+            throw CannotModifyType.cannotModifyFromElement();
         });
-        Thread.ofVirtual().start(() -> doBlockingPop(key));
-        return wrapper.get();
+        doBlockingPop(key);
+        return wrapper[0];
     }
 
     @NonNull
@@ -117,22 +112,22 @@ final class Lists {
         if (howMany < 1) {
             throw new OnlyPositiveValues();
         }
-        var reference = new AtomicReference<List<String>>(null);
+        var reference = new Reference<List<String>>();
         storage.mutateIfPresent(key, (_, existing) -> {
             var elements = expectList(Storage.extractFrom(existing)).value();
             if (elements.isEmpty()) {
-                reference.set(null);
+                reference.value = null;
                 return null;
             }
             if (howMany == 1) {
                 var found = elements.removeFirst();
-                reference.set(List.of(found));
+                reference.value = List.of(found);
             } else if (howMany >= elements.size()) {
-                reference.set(elements);
+                reference.value = elements;
                 return null;
             } else {
                 var view = elements.subList(0, howMany);
-                reference.set(List.copyOf(view));
+                reference.value = List.copyOf(view);
                 view.clear();
             }
             if (elements.isEmpty()) {
@@ -140,34 +135,38 @@ final class Lists {
             }
             return existing;
         });
-        return reference.get();
+        return reference.value;
     }
 
-    @NonNull
-    FutureWithTimeoutCleanup<String> blockingPop(@NonNull Key key) {
-        var future = new CompletableFuture<String>();
-        LOGGER.finer(() -> "Blocking pop operation for " + key.value());
+    void blockingPop(@NonNull Key key, @NonNull Consumer<String> onValue, @NonNull Runnable onTimeout,
+                     @NonNull Scheduler scheduler, long timeoutMs) {
+        var waiter = new Waiter<>(onValue, onTimeout);
         pops.compute(key, (_, acc) -> {
             if (acc == null) {
                 acc = new ArrayList<>();
             }
-            acc.add(future);
+            acc.add(waiter);
             return acc;
         });
         doBlockingPop(key);
-        return FutureWithTimeoutCleanup.<String>builder(future)
-                .onSuccess(() -> storage.notifyWatchers(key))
-                .withCleaning(() -> pops.compute(key, (_, awaiting) -> {
-                    if (awaiting == null) {
-                        return null;
-                    }
-                    awaiting.remove(future);
-                    if (awaiting.isEmpty()) {
-                        return null;
-                    } else {
-                        return awaiting;
-                    }
-                }));
+        if (timeoutMs > 0) {
+            scheduler.schedule(() -> timeoutWaiter(key, waiter), timeoutMs);
+        }
+    }
+
+    private void timeoutWaiter(@NonNull Key key, @NonNull Waiter<String> waiter) {
+        if (waiter.completed) {
+            return;
+        }
+        waiter.completed = true;
+        pops.compute(key, (_, acc) -> {
+            if (acc == null) {
+                return null;
+            }
+            acc.remove(waiter);
+            return acc.isEmpty() ? null : acc;
+        });
+        waiter.onTimeout.run();
     }
 
     private void doBlockingPop(@NonNull Key key) {
@@ -175,25 +174,42 @@ final class Lists {
             if (existing == null) {
                 return null;
             }
-            if (Storage.extractFrom(existing) instanceof ListValue(List<String> elements)) {
-                if (elements.isEmpty()) {
-                    return null;
-                }
-                pops.compute(aKey, (_, acc) -> {
-                    if (acc == null) {
-                        return null;
-                    }
-                    var howMany = Math.min(elements.size(), acc.size());
-                    while (howMany-- > 0) {
-                        var toComplete = acc.removeFirst();
-                        LOGGER.finer(() -> "Completing blocking for key = " + aKey.value());
-                        toComplete.complete(elements.removeFirst());
-                    }
-                    return acc;
-                });
+            if (!(Storage.extractFrom(existing) instanceof ListValue(List<String> elements))) {
                 return existing;
             }
-            return existing;
+            if (elements.isEmpty()) {
+                return existing;
+            }
+            pops.compute(aKey, (_, acc) -> {
+                if (acc == null) {
+                    return null;
+                }
+                var howMany = Math.min(elements.size(), acc.size());
+                while (howMany-- > 0) {
+                    var waiter = acc.removeFirst();
+                    waiter.completed = true;
+                    LOGGER.finer(() -> "Completing blocking for key = " + aKey.value());
+                    waiter.onValue.accept(elements.removeFirst());
+                }
+                return acc.isEmpty() ? null : acc;
+            });
+            storage.notifyWatchers(aKey);
+            return elements.isEmpty() ? null : existing;
         });
+    }
+
+    private static final class Waiter<T> {
+        final Consumer<T> onValue;
+        final Runnable onTimeout;
+        boolean completed;
+
+        Waiter(Consumer<T> onValue, Runnable onTimeout) {
+            this.onValue = onValue;
+            this.onTimeout = onTimeout;
+        }
+    }
+
+    private static final class Reference<T> {
+        T value;
     }
 }

@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 
 import java.util.List;
 
@@ -12,12 +11,13 @@ public final class Lpush {
     private Lpush() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() < 2) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var key = new Key(args.getFirst());
-        var count = Storage.STORAGE.prependElements(key, args.subList(1, args.size()));
-        return Messages.respInteger(count);
+        var count = context.storage().prependElements(key, args.subList(1, args.size()));
+        context.channel().accept(Messages.respInteger(count));
     }
 }

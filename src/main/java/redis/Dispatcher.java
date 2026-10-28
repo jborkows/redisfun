@@ -1,58 +1,93 @@
 package redis;
 
 import redis.commands.Effect;
+import redis.commands.EffectChannel;
 import redis.commands.Interpreter;
 import redis.protocol.*;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Logger;
 
 class Dispatcher implements AutoCloseable {
     private static final Logger logger = Logger.getLogger(Dispatcher.class.getName());
     private final Interpreter interpreter;
-    private Lexer lexer = new Lexer();
-    private Parser parser = new Parser();
 
     Dispatcher() {
         this.interpreter = new Interpreter();
     }
 
-    List<Effect> process(byte[] input, int read) {
-        logger.fine(() -> "Received: " + new String(input, 0, read));
-        var tokens = extractTokens(input, read);
-        var commands = parseTokens(tokens);
-        var effects = new ArrayList<Effect>();
-        for (var command : commands) {
-            interpreter.apply(command, effects::add);
-        }
-        return List.copyOf(effects);
+    ConnectionContext newConnection() {
+        return new ConnectionContext();
     }
 
-    private List<Command> parseTokens(List<Token> tokens) {
+    void process(byte[] input, int read, ConnectionContext context) {
+        logger.fine(() -> "Received: " + new String(input, 0, read));
+        var commands = parseTokens(extractTokens(input, read, context), context);
+        for (var command : commands) {
+            interpreter.apply(command, context.channel);
+            try {
+                var effect = context.queue.take();
+                context.outputStream.write(effect.text().getBytes(StandardCharsets.ISO_8859_1));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (IOException e) {
+                logger.severe("IOException: " + e.getMessage());
+                break;
+            }
+        }
+        try {
+            context.outputStream.flush();
+        } catch (IOException e) {
+            logger.severe("IOException: " + e.getMessage());
+        }
+    }
+
+    private List<Command> parseTokens(List<Token> tokens, ConnectionContext context) {
         var commands = new ArrayList<Command>();
         for (var token : tokens) {
-            var parsingResult = parser.on(token);
+            var parsingResult = context.parser.on(token);
             if (parsingResult.state() instanceof CommandState.Ready(Command command)) {
                 commands.add(command);
             }
-            parser = parsingResult.parser();
+            context.parser = parsingResult.parser();
         }
         return List.copyOf(commands);
     }
 
-    private List<Token> extractTokens(byte[] input, int read) {
+    private List<Token> extractTokens(byte[] input, int read, ConnectionContext context) {
         var tokens = new ArrayList<Token>();
         for (int index = 0; index < read; index++) {
-            var tokenizerResponse = lexer.onByte(input[index]);
+            var tokenizerResponse = context.lexer.onByte(input[index]);
             if (tokenizerResponse.state() instanceof TokenState.Ready(Token token)) {
                 tokens.add(token);
             }
-            lexer = tokenizerResponse.lexer();
+            context.lexer = tokenizerResponse.lexer();
         }
         return tokens;
     }
 
+    static final class ConnectionContext {
+        private OutputStream outputStream;
+        private Lexer lexer = new Lexer();
+        private Parser parser = new Parser();
+        private final BlockingQueue<Effect> queue = new LinkedBlockingQueue<>();
+        private final EffectChannel channel = effect -> {
+            if (!queue.offer(effect)) {
+                throw new IllegalStateException("Effect queue is full");
+            }
+        };
+
+        void bind(OutputStream outputStream) {
+            this.outputStream = outputStream;
+        }
+    }
 
     @Override
     public void close() {

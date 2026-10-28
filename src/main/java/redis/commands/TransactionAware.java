@@ -16,26 +16,26 @@ class TransactionAware {
     private static final String MULTI_COMMAND = "MULTI";
     private static final String DISCARD_COMMAND = "DISCARD";
     private static final String WATCH_COMMAND = "WATCH";
-    private final Map<Key, Watcher> watchers = new HashMap<>();
-    private final Map<Key, ChangeObserved> watched = new HashMap<>();
 
+    private final Storage storage;
     private final BiConsumer<Command, EffectChannel> processor;
-    private final List<Command> commandQueue = new ArrayList<>();
-    private boolean transactionInProgress = false;
+    private final Map<EffectChannel, ConnectionState> connections = new HashMap<>();
 
-    TransactionAware(BiConsumer<Command, EffectChannel> processor) {
+    TransactionAware(Storage storage, BiConsumer<Command, EffectChannel> processor) {
+        this.storage = storage;
         this.processor = processor;
     }
 
     void apply(Command command, EffectChannel consumer) {
-        if (!transactionInProgress) {
+        var state = connections.computeIfAbsent(consumer, _ -> new ConnectionState());
+        if (!state.transactionInProgress) {
             switch (command.commandName()) {
                 case MULTI_COMMAND -> {
                     if (!command.args().isEmpty()) {
                         consumer.accept(Messages.wrongNumberOfArguments(command.name()));
                     } else {
-                        transactionInProgress = true;
-                        commandQueue.clear();
+                        state.transactionInProgress = true;
+                        state.commandQueue.clear();
                         consumer.accept(Messages.ok());
                     }
                 }
@@ -58,11 +58,11 @@ class TransactionAware {
                         consumer.accept(Messages.wrongNumberOfArguments(command.name()));
                     } else {
                         command.args().forEach(commandArg -> {
-                            Watcher watcher = key -> watched.computeIfPresent(key, (_, _) -> ChangeObserved.CHANGED);
+                            Watcher watcher = key -> state.watched.computeIfPresent(key, (_, _) -> ChangeObserved.CHANGED);
                             var key = new Key(commandArg);
-                            watchers.put(key, watcher);
-                            watched.put(key, ChangeObserved.NO_CHANGE);
-                            Storage.STORAGE.registerWatcher(key, watcher);
+                            state.watchers.put(key, watcher);
+                            state.watched.put(key, ChangeObserved.NO_CHANGE);
+                            storage.registerWatcher(key, watcher);
                         });
                         consumer.accept(Messages.ok());
                     }
@@ -81,16 +81,15 @@ class TransactionAware {
                 case EXEC_COMMAND -> {
                     if (!command.args().isEmpty()) {
                         consumer.accept(Messages.wrongNumberOfArguments(command.name()));
-                    } else if (ChangeObserved.CHANGED == transactionPreparations()) {
-                        transactionInProgress = false;
+                    } else if (ChangeObserved.CHANGED == transactionPreparations(state)) {
+                        state.transactionInProgress = false;
                         consumer.accept(Messages.nilArray());
                     } else {
-                        //Yes I know is not atomic, if I would start from scratch probably I would use actor model like behavior
                         var messages = new ArrayList<Effect>();
-                        for (var queuedCommand : commandQueue) {
+                        for (var queuedCommand : state.commandQueue) {
                             processor.accept(queuedCommand, messages::add);
                         }
-                        transactionInProgress = false;
+                        state.transactionInProgress = false;
                         consumer.accept(Messages.array(messages));
                     }
                 }
@@ -98,31 +97,41 @@ class TransactionAware {
                     if (!command.args().isEmpty()) {
                         consumer.accept(Messages.wrongNumberOfArguments(command.name()));
                     } else {
-                        commandQueue.clear();
-                        transactionInProgress = false;
+                        state.commandQueue.clear();
+                        state.transactionInProgress = false;
                         consumer.accept(Messages.ok());
                     }
                 }
                 default -> {
-                    commandQueue.add(command);
+                    state.commandQueue.add(command);
                     consumer.accept(Messages.simpleMessage("QUEUED"));
                 }
             }
         }
     }
 
-    private ChangeObserved transactionPreparations() {
-        watchers.forEach(Storage.STORAGE::deregisterWatcher);
-        var changed = watched.entrySet().stream().filter(entry -> entry.getValue() == ChangeObserved.CHANGED).findAny().map(Map.Entry::getValue).orElse(ChangeObserved.NO_CHANGE);
-        watched.clear();
-        watchers.clear();
+    private ChangeObserved transactionPreparations(ConnectionState state) {
+        state.watchers.forEach(storage::deregisterWatcher);
+        var changed = state.watched.entrySet().stream().filter(entry -> entry.getValue() == ChangeObserved.CHANGED).findAny().map(Map.Entry::getValue).orElse(ChangeObserved.NO_CHANGE);
+        state.watched.clear();
+        state.watchers.clear();
         return changed;
     }
 
     void close() {
-        commandQueue.clear();
-        watchers.forEach(Storage.STORAGE::deregisterWatcher);
-        watchers.clear();
+        connections.values().forEach(state -> {
+            state.commandQueue.clear();
+            state.watchers.forEach(storage::deregisterWatcher);
+            state.watchers.clear();
+        });
+        connections.clear();
+    }
+
+    private static final class ConnectionState {
+        private final Map<Key, Watcher> watchers = new HashMap<>();
+        private final Map<Key, ChangeObserved> watched = new HashMap<>();
+        private final List<Command> commandQueue = new ArrayList<>();
+        private boolean transactionInProgress = false;
     }
 
     private enum ChangeObserved {

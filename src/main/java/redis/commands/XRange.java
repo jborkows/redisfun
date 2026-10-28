@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 import redis.storage.StorageException;
 
 import java.util.List;
@@ -13,9 +12,10 @@ public final class XRange {
     private XRange() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() != 3) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
 
         var key = new Key(args.get(0));
@@ -23,10 +23,10 @@ public final class XRange {
         var end = args.get(2);
 
         try {
-            var result = Storage.STORAGE.range(key, start, end);
-            return ReadStorageEntries.readEntries(result);
+            var result = context.storage().range(key, start, end);
+            context.channel().accept(ReadStorageEntries.readEntries(result));
         } catch (StorageException.StreamOperationsException.InvalidId e) {
-            return Messages.wrongType("Used wrong ids");
+            context.channel().accept(Messages.wrongType("Used wrong ids"));
         }
     }
 }

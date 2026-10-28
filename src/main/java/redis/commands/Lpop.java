@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 import redis.storage.StorageException.OnlyPositiveValues;
 
 import java.util.List;
@@ -13,9 +12,10 @@ public final class Lpop {
     private Lpop() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (!(args.size() == 1 || args.size() == 2)) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var key = new Key(args.getFirst());
         try {
@@ -23,20 +23,20 @@ public final class Lpop {
                 case 2 -> Integer.parseInt(args.get(1));
                 default -> 1;
             };
-            var element = Storage.STORAGE.pop(key, howMany);
+            var element = context.storage().pop(key, howMany);
             if (element == null) {
                 if (requestingSingleElementPop(args)) {
-                    return Messages.nilMessage();
+                    context.channel().accept(Messages.nilMessage());
                 } else {
-                    return Messages.nilArray();
+                    context.channel().accept(Messages.nilArray());
                 }
             } else if (element.size() == 1 && requestingSingleElementPop(args)) {
-                return Messages.bulkMessage(element.getFirst());
+                context.channel().accept(Messages.bulkMessage(element.getFirst()));
             } else {
-                return Messages.bulkMessages(element);
+                context.channel().accept(Messages.bulkMessages(element));
             }
         } catch (NumberFormatException | OnlyPositiveValues e) {
-            return Messages.wrongType("Optional number argument has to be numeric greater or equal than 1");
+            context.channel().accept(Messages.wrongType("Optional number argument has to be numeric greater or equal than 1"));
         }
     }
 

@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 import redis.storage.StorageException;
 
 import java.util.List;
@@ -13,17 +12,18 @@ public final class Incr {
     private Incr() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() != 1) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var key = new Key(args.getFirst());
 
         try {
-            var value = Storage.STORAGE.increment(key);
-            return Messages.respInteger(value);
+            var value = context.storage().increment(key);
+            context.channel().accept(Messages.respInteger(value));
         } catch (StorageException.OperationAllowedOnlyForIntegers e) {
-            return Messages.errorMessage("value is not an integer or out of range");
+            context.channel().accept(Messages.errorMessage("value is not an integer or out of range"));
         }
 
     }

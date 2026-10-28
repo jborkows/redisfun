@@ -3,34 +3,30 @@ package redis.storage;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
+import redis.commands.Scheduler;
 import redis.storage.DataPersistency.Eternal;
 import redis.storage.DataPersistency.ExpiredAt;
 import redis.storage.StorageException.StreamOperationsException;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 public final class Storage {
 
-    public static final Storage STORAGE = new Storage();
-
     private final Strings strings = new Strings(this);
     private final Lists lists = new Lists(this);
     private final Streams streams = new Streams(this);
 
-    private final Map<Key, DataPersistency> db = new ConcurrentHashMap<>();
-    private final Map<Key, List<Watcher>> watchers = new ConcurrentHashMap<>();
-
-    private Storage() {
-    }
+    private final Map<Key, DataPersistency> db = new HashMap<>();
+    private final Map<Key, List<Watcher>> watchers = new HashMap<>();
 
     @NonNull
     static Value extractFrom(@NonNull DataPersistency persistency) {
@@ -48,48 +44,60 @@ public final class Storage {
     }
 
     @NullMarked
-    private static List<Entry> intoEntries(List<StorageEntry> found) {
+    static List<Entry> intoEntries(List<StorageEntry> found) {
         return found.stream().map(i -> new Entry(i.id(), i.tuples())).toList();
     }
 
     @Nullable
     Value lookup(@NonNull Key key) {
-        var found = db.computeIfPresent(key, (_, v) -> persistency(v));
+        var found = db.get(key);
         if (found == null) {
             return null;
         }
-        return extractFrom(found);
+        var live = persistency(found);
+        if (live == null) {
+            db.remove(key);
+            return null;
+        }
+        return extractFrom(live);
     }
 
     void mutate(@NonNull Key key, @NonNull BiFunction<Key, DataPersistency, DataPersistency> remapping) {
-        db.compute(key, (aKey, value) -> {
-            if (value == null) {
-                return remapping.apply(key, null);
-            }
-            var v = persistency(value);
-            return remapping.apply(aKey, v);
-        });
+        var value = db.get(key);
+        var v = value == null ? null : persistency(value);
+        var result = remapping.apply(key, v);
+        if (result == null) {
+            db.remove(key);
+        } else {
+            db.put(key, result);
+        }
     }
 
     void mutateIfPresent(@NonNull Key key, @NonNull BiFunction<Key, DataPersistency, DataPersistency> remapping) {
-        db.computeIfPresent(key, (aKey, value) -> {
-            var live = persistency(value);
-            return live == null ? null : remapping.apply(aKey, live);
-        });
+        var value = db.get(key);
+        if (value == null) {
+            return;
+        }
+        var live = persistency(value);
+        if (live == null) {
+            db.remove(key);
+            return;
+        }
+        var result = remapping.apply(key, live);
+        if (result == null) {
+            db.remove(key);
+        } else {
+            db.put(key, result);
+        }
     }
 
     @NullMarked
-    <T> @Nullable T readIfPresent(@NonNull Key key, Function<Value, T> reader) {
-        var result = new AtomicReference<T>();
-        db.computeIfPresent(key, (aKey, value) -> {
-            var live = persistency(value);
-            if (live == null) {
-                return null;
-            }
-            result.set(reader.apply(extractFrom(live)));
-            return live;
-        });
-        return result.get();
+    <T> @Nullable T readIfPresent(Key key, Function<Value, T> reader) {
+        var value = lookup(key);
+        if (value == null) {
+            return null;
+        }
+        return reader.apply(value);
     }
 
     @NonNull
@@ -132,9 +140,9 @@ public final class Storage {
         return modification(key, () -> lists.pop(key, howMany));
     }
 
-    @NonNull
-    public FutureWithTimeoutCleanup<String> blockingPop(@NonNull Key key) {
-        return lists.blockingPop(key);
+    public void blockingPop(@NonNull Key key, @NonNull Consumer<String> onValue,
+                            @NonNull Runnable onTimeout, @NonNull Scheduler scheduler, long timeoutMs) {
+        lists.blockingPop(key, onValue, onTimeout, scheduler, timeoutMs);
     }
 
     @NonNull
@@ -154,9 +162,10 @@ public final class Storage {
         return intoEntries(found);
     }
 
-    @NullMarked
-    public FutureWithTimeoutCleanup<List<Entry>> blockingReadStreamFrom(Key key, String id) {
-        return streams.blockingRead(key, id).map(Storage::intoEntries);
+    public void blockingReadStreamFrom(@NonNull Key key, @NonNull String id,
+                                       @NonNull Consumer<List<Entry>> onValue,
+                                       @NonNull Runnable onTimeout, @NonNull Scheduler scheduler, long timeoutMs) {
+        streams.blockingRead(key, id, onValue, onTimeout, scheduler, timeoutMs);
     }
 
     @NullMarked
@@ -165,11 +174,17 @@ public final class Storage {
     }
 
     public void registerWatcher(Key key, Watcher watcher) {
-        watchers.compute(key, (k, v) -> v == null ? new ArrayList<>() : v).add(watcher);
+        watchers.compute(key, (_, v) -> {
+            if (v == null) {
+                v = new ArrayList<>();
+            }
+            v.add(watcher);
+            return v;
+        });
     }
 
     public void deregisterWatcher(Key key, Watcher watcher) {
-        watchers.compute(key, (k, v) -> {
+        watchers.compute(key, (_, v) -> {
             if (v == null) {
                 return null;
             }
@@ -200,6 +215,9 @@ public final class Storage {
     }
 
     void notifyWatchers(Key key) {
-        watchers.getOrDefault(key, List.of()).forEach(watcher -> watcher.onValueChanged(key));
+        var keyWatchers = watchers.get(key);
+        if (keyWatchers != null) {
+            keyWatchers.forEach(watcher -> watcher.onValueChanged(key));
+        }
     }
 }

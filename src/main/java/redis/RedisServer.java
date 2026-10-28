@@ -14,6 +14,7 @@ public final class RedisServer implements AutoCloseable {
     private static final int DEFAULT_MAX_CLIENTS = Integer.getInteger("redis.maxclients", 1000);
     private final int requestedPort;
     private final Semaphore clientSlots;
+    private final Dispatcher dispatcher = new Dispatcher();
     private ServerSocket serverSocket;
     private Thread acceptThread;
     private volatile boolean running;
@@ -112,14 +113,11 @@ public final class RedisServer implements AutoCloseable {
     private void handleClient(Socket clientSocket) {
         var buffer = new byte[1024];
         int bytesRead;
-        try (clientSocket; var dispatcher = new Dispatcher()) {
+        try (clientSocket) {
+            var context = dispatcher.newConnection();
+            context.bind(clientSocket.getOutputStream());
             while ((bytesRead = clientSocket.getInputStream().read(buffer)) != -1) {
-                var effects = dispatcher.process(buffer, bytesRead);
-                var outputStream = clientSocket.getOutputStream();
-                for (var effect : effects) {
-                    outputStream.write(effect.text().getBytes(StandardCharsets.ISO_8859_1));
-                }
-                outputStream.flush();
+                dispatcher.process(buffer, bytesRead, context);
             }
         } catch (IOException e) {
             logger.severe("IOException: " + e.getMessage());
@@ -139,5 +137,6 @@ public final class RedisServer implements AutoCloseable {
                 Thread.currentThread().interrupt();
             }
         }
+        dispatcher.close();
     }
 }

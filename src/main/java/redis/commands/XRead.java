@@ -3,12 +3,10 @@ package redis.commands;
 import org.jspecify.annotations.NullMarked;
 import redis.storage.Entry;
 import redis.storage.Key;
-import redis.storage.Storage;
 import redis.storage.StorageException;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.*;
 
 public final class XRead {
 
@@ -17,93 +15,107 @@ public final class XRead {
     private XRead() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() < 3) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var operation = args.getFirst().toUpperCase();
         if ("STREAMS".equals(operation)) {
-            return readStreams(args);
+            readStreams(args, context);
         } else if ("BLOCK".equals(operation)) {
-            return blockingReadStreams(args);
+            blockingReadStreams(args, context);
         } else {
-            return Messages.errorMessage("Not known operation %s".formatted(operation));
+            context.channel().accept(Messages.errorMessage("Not known operation %s".formatted(operation)));
         }
     }
 
-    private static Effect readStreams(List<String> args) {
+    private static void readStreams(List<String> args, CommandContext context) {
         try {
-            var entries = readInParallel(args, 1, Storage.STORAGE::readStreamFrom);
-            return arrayResponse(entries);
-        } catch (TimeoutException e) {
-            throw new RuntimeException(e); // non-blocking reads never time out
+            var entries = readSequential(args, 1, context.storage()::readStreamFrom, context);
+            context.channel().accept(arrayResponse(entries));
         } catch (CommandFailedException e) {
-            return e.effect;
+            context.channel().accept(e.effect);
         }
     }
 
-    private static Effect blockingReadStreams(List<String> args) {
+    private static void blockingReadStreams(List<String> args, CommandContext context) {
         var read = readDuration(args);
-        return switch (read) {
-            case ReadDuration.Failure(Effect effect) -> effect;
-
+        switch (read) {
+            case ReadDuration.Failure(Effect effect) -> context.channel().accept(effect);
             case ReadDuration.Milliseconds(int milliseconds) -> {
+                var keyIdsPairs = args.subList(3, args.size());
+                if (keyIdsPairs.isEmpty() || keyIdsPairs.size() % 2 == 1) {
+                    context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+                    return;
+                }
+                int arraySeparation = keyIdsPairs.size() / 2;
+
+                var entries = new ArrayList<StreamEntry>(arraySeparation);
                 try {
-                    var entries = readInParallel(args, 3, (key, id) -> {
-                        var futureCleanup = Storage.STORAGE.blockingReadStreamFrom(key, id);
-                        return futureCleanup.work(promise -> switch (milliseconds) {
-                            case 0 -> promise.get();
-                            default -> promise.get(milliseconds, TimeUnit.MILLISECONDS);
-                        });
-                    });
-                    yield arrayResponse(entries);
-                } catch (TimeoutException e) {
-                    yield Messages.nilArray();
+                    entries.addAll(readSequential(args, 3, context.storage()::readStreamFrom, context));
                 } catch (CommandFailedException e) {
-                    yield e.effect;
+                    context.channel().accept(e.effect);
+                    return;
+                }
+
+                if (entries.stream().anyMatch(e -> !e.entries().isEmpty())) {
+                    context.channel().accept(arrayResponse(entries));
+                    return;
+                }
+
+                var completed = new boolean[]{false};
+                for (int i = 0; i < arraySeparation; i++) {
+                    var key = keyIdsPairs.get(i);
+                    var id = keyIdsPairs.get(i + arraySeparation);
+                    var index = i;
+                    context.storage().blockingReadStreamFrom(
+                            new Key(key),
+                            id,
+                            result -> {
+                                if (completed[0]) {
+                                    return;
+                                }
+                                completed[0] = true;
+                                var response = new ArrayList<StreamEntry>(arraySeparation);
+                                for (int j = 0; j < arraySeparation; j++) {
+                                    if (j == index) {
+                                        response.add(new StreamEntry(keyIdsPairs.get(j), result));
+                                    } else {
+                                        response.add(new StreamEntry(keyIdsPairs.get(j), List.of()));
+                                    }
+                                }
+                                context.channel().accept(arrayResponse(response));
+                            },
+                            () -> {
+                                if (completed[0]) {
+                                    return;
+                                }
+                                completed[0] = true;
+                                context.channel().accept(Messages.nilArray());
+                            },
+                            context.scheduler(),
+                            milliseconds
+                    );
                 }
             }
-        };
+        }
     }
 
-    private static List<StreamEntry> readInParallel(List<String> args, int keyIdsOffset, StreamReader reader) throws TimeoutException {
+    private static List<StreamEntry> readSequential(List<String> args, int keyIdsOffset, StreamReader reader, CommandContext context) {
         var keyIdsPairs = args.subList(keyIdsOffset, args.size());
         if (keyIdsPairs.isEmpty() || keyIdsPairs.size() % 2 == 1) {
             throw new CommandFailedException(Messages.wrongNumberOfArguments(NAME));
         }
         int arraySeparation = keyIdsPairs.size() / 2;
         var entries = new ArrayList<StreamEntry>(arraySeparation);
-        try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
-            var futures = new ArrayList<Future<StreamEntry>>(arraySeparation);
-            for (int i = 0; i < arraySeparation; i++) {
-                var counter = i;
-                futures.add(executorService.submit(() -> {
-                    var key = keyIdsPairs.get(counter);
-                    var result = reader.read(new Key(key), keyIdsPairs.get(counter + arraySeparation));
-                    return new StreamEntry(key, result);
-                }));
-            }
-            for (int i = 0; i < arraySeparation; i++) {
-                try {
-                    entries.add(futures.get(i).get());
-                } catch (ExecutionException e) {
-                    futures.forEach(future -> future.cancel(true));
-                    var cause = e.getCause();
-                    if (cause instanceof StorageException.StreamOperationsException.InvalidId) {
-                        throw new CommandFailedException(Messages.wrongType("Used wrong ids"));
-                    }
-                    if (cause instanceof StorageException se) {
-                        throw se;
-                    }
-                    if (cause instanceof TimeoutException te) {
-                        throw te;
-                    }
-                    throw new RuntimeException(cause == null ? e : cause);
-                } catch (InterruptedException e) {
-                    futures.forEach(future -> future.cancel(true));
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException(e);
-                }
+        for (int i = 0; i < arraySeparation; i++) {
+            var key = keyIdsPairs.get(i);
+            try {
+                var result = reader.read(new Key(key), keyIdsPairs.get(i + arraySeparation));
+                entries.add(new StreamEntry(key, result));
+            } catch (StorageException.StreamOperationsException.InvalidId e) {
+                throw new CommandFailedException(Messages.wrongType("Used wrong ids"));
             }
         }
         return entries;
@@ -136,7 +148,7 @@ public final class XRead {
 
     @FunctionalInterface
     private interface StreamReader {
-        List<Entry> read(Key key, String id) throws Exception;
+        List<Entry> read(Key key, String id);
     }
 
     private sealed interface ReadDuration {

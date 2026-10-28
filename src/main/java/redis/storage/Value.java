@@ -2,7 +2,7 @@ package redis.storage;
 
 import java.util.List;
 
-sealed interface Value {
+public sealed interface Value {
 
     record StringValue(String value) implements Value {
     }

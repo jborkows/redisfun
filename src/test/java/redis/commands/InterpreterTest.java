@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import redis.protocol.Command;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,7 +15,16 @@ class InterpreterTest {
 
     private Effect apply(Command command) {
         var effect = new AtomicReference<Effect>();
-        interpreter.apply(command, effect::set);
+        var latch = new CountDownLatch(1);
+        interpreter.apply(command, e -> {
+            effect.set(e);
+            latch.countDown();
+        });
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         return effect.get();
     }
 

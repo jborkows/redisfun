@@ -9,13 +9,11 @@ import redis.storage.StorageException.OperationAllowedOnlyForSingleElement;
 import redis.storage.Value.StringValue;
 
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
- * String-shaped operations. Atomicity comes from {@link Storage#mutate};
- * this class never touches the keyspace directly.
+ * String-shaped operations. All access is serialised by the single actor thread.
  */
 final class Strings {
 
@@ -39,10 +37,10 @@ final class Strings {
         if (value == null) {
             return null;
         }
-        return switch (value) {
-            case StringValue stringValue -> stringValue.value();
-            default -> throw new OperationAllowedOnlyForSingleElement();
-        };
+        if (value instanceof StringValue(String stringValue)) {
+            return stringValue;
+        }
+        throw new OperationAllowedOnlyForSingleElement();
     }
 
     void put(@NonNull Key key, @NonNull String value) {
@@ -60,20 +58,20 @@ final class Strings {
 
     @NullMarked
     public long increment(Key key) throws StorageException.OperationAllowedOnlyForSingleElement, StorageException.OperationAllowedOnlyForIntegers {
-        var atomicLong = new AtomicLong();
+        var result = new long[]{0};
         mutate(key, () -> {
-            atomicLong.set(1L);
+            result[0] = 1L;
             return new Eternal(new StringValue("1"));
         }, (d, v) -> {
             try {
                 long value = Long.parseLong(v) + 1;
-                atomicLong.set(value);
+                result[0] = value;
                 return copy(d, new StringValue(String.valueOf(value)));
             } catch (NumberFormatException e) {
                 throw new StorageException.OperationAllowedOnlyForIntegers();
             }
         });
-        return atomicLong.get();
+        return result[0];
     }
 
     @NullMarked

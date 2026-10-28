@@ -1,7 +1,6 @@
 package redis.commands;
 
 import redis.storage.Key;
-import redis.storage.Storage;
 
 import java.util.List;
 
@@ -12,13 +11,14 @@ public final class Llen {
     private Llen() {
     }
 
-    public static Effect execute(List<String> args) {
+    public static void execute(List<String> args, CommandContext context) {
         if (args.size() != 1) {
-            return Messages.wrongNumberOfArguments(NAME);
+            context.channel().accept(Messages.wrongNumberOfArguments(NAME));
+            return;
         }
         var key = new Key(args.getFirst());
-        int count = Storage.STORAGE.lengthOf(key);
-        return Messages.respInteger(count);
+        int count = context.storage().lengthOf(key);
+        context.channel().accept(Messages.respInteger(count));
     }
 
 }

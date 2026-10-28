@@ -2,6 +2,7 @@ package redis.storage;
 
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
+import redis.commands.Scheduler;
 import redis.storage.StorageException.StreamOperationsException;
 import redis.storage.StorageException.StreamOperationsException.OperationAllowedOnlyForStreams;
 import redis.storage.Value.StreamValue;
@@ -10,15 +11,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 final class Streams {
 
     private final Storage storage;
-    private final Map<Key, Map<StorageEntryKey, List<CompletableFuture<List<StorageEntry>>>>> pops = new ConcurrentHashMap<>();
+    private final Map<Key, Map<StorageEntryKey, List<Waiter<List<StorageEntry>>>>> pops = new HashMap<>();
 
     Streams(Storage storage) {
         this.storage = storage;
@@ -26,15 +25,15 @@ final class Streams {
 
     @NonNull
     private static StreamValue expect(@NonNull Value value) {
-        return switch (value) {
-            case StreamValue s -> s;
-            default -> throw new StreamOperationsException.OperationAllowedOnlyForStreams();
-        };
+        if (value instanceof StreamValue s) {
+            return s;
+        }
+        throw new OperationAllowedOnlyForStreams();
     }
 
     public EntryId add(Key streamKey, Entry entry) throws StreamOperationsException {
-        var id = new AtomicReference<EntryId>();
-        storage.mutate(streamKey, (aKey, v) -> {
+        var id = new EntryId[]{null};
+        storage.mutate(streamKey, (_, v) -> {
             StreamValue streamValue;
             DataPersistency newPersistency;
             if (v == null) {
@@ -46,12 +45,12 @@ final class Streams {
                 newPersistency = v;
             }
             var validEntry = validate(entry, streamValue);
-            id.set(new EntryId(validEntry.id()));
+            id[0] = new EntryId(validEntry.id());
             streamValue.value().add(validEntry);
             return newPersistency;
         });
-        Thread.ofVirtual().start(() -> doBlockingRead(streamKey));
-        return id.get();
+        doBlockingRead(streamKey);
+        return id[0];
     }
 
     private StorageEntry validate(Entry entry, StreamValue streamValue) throws StreamOperationsException {
@@ -68,7 +67,15 @@ final class Streams {
 
     @NullMarked
     public List<StorageEntry> readSince(Key key, String id) {
-        var startKey = StorageEntryKey.parse(id);
+        StorageEntryKey startKey;
+        if ("$".equals(id)) {
+            var existing = storage.lookup(key);
+            startKey = existing instanceof Value.StreamValue(List<StorageEntry> elements) && !elements.isEmpty()
+                    ? elements.getLast().key()
+                    : new StorageEntryKey(0, 0);
+        } else {
+            startKey = StorageEntryKey.parse(id);
+        }
         return query(key, i -> i.key().compareTo(startKey) > 0);
     }
 
@@ -80,7 +87,8 @@ final class Streams {
         return snapshot.stream().filter(predicate).toList();
     }
 
-    public FutureWithTimeoutCleanup<List<StorageEntry>> blockingRead(Key key, String id) {
+    void blockingRead(Key key, String id, Consumer<List<Entry>> onValue, Runnable onTimeout,
+                      Scheduler scheduler, long timeoutMs) {
         var existing = storage.lookup(key);
         if (existing != null && !(existing instanceof StreamValue)) {
             throw new OperationAllowedOnlyForStreams();
@@ -93,31 +101,40 @@ final class Streams {
         } else {
             startKey = StorageEntryKey.parse(id);
         }
-        var future = new CompletableFuture<List<StorageEntry>>();
+        Waiter<List<StorageEntry>> waiter = new Waiter<>(entries -> onValue.accept(Storage.intoEntries(entries)), onTimeout);
         pops.compute(key, (_, acc) -> {
             if (acc == null) {
                 acc = new HashMap<>();
             }
-            acc.computeIfAbsent(startKey, (x) -> new ArrayList<>()).add(future);
+            acc.computeIfAbsent(startKey, _ -> new ArrayList<>()).add(waiter);
             return acc;
         });
         doBlockingRead(key);
+        if (timeoutMs > 0) {
+            scheduler.schedule(() -> timeoutWaiter(key, startKey, waiter), timeoutMs);
+        }
+    }
 
-        return FutureWithTimeoutCleanup.<List<StorageEntry>>builder(future)
-                .onlyCleaning(() -> pops.compute(key, (_, awaiting) -> {
-                    if (awaiting == null) {
-                        return null;
-                    }
-                    if (!awaiting.containsKey(startKey)) {
-                        return awaiting;
-                    }
-                    awaiting.get(startKey).remove(future);
-                    if (awaiting.isEmpty()) {
-                        return null;
-                    } else {
-                        return awaiting;
-                    }
-                }));
+    private void timeoutWaiter(Key key, StorageEntryKey startKey, Waiter<List<StorageEntry>> waiter) {
+        if (waiter.completed) {
+            return;
+        }
+        waiter.completed = true;
+        pops.compute(key, (_, awaiting) -> {
+            if (awaiting == null) {
+                return null;
+            }
+            if (!awaiting.containsKey(startKey)) {
+                return awaiting;
+            }
+            awaiting.get(startKey).remove(waiter);
+            if (awaiting.isEmpty()) {
+                return null;
+            } else {
+                return awaiting;
+            }
+        });
+        waiter.onTimeout.run();
     }
 
     private void doBlockingRead(@NonNull Key key) {
@@ -135,16 +152,17 @@ final class Streams {
                     }
                     var lastKey = elements.getLast().key();
                     var matchingKeys = acc.keySet().stream().filter(id -> id.compareTo(lastKey) < 0).toList();
-                    //No matching keys, waiting for another chance
-                    if (matchingKeys.isEmpty()) {
-                        return acc;
-                    }
-                    for (var matchingKey : matchingKeys) {
-                        var found = elements.stream().filter(i -> matchingKey.compareTo(i.key()) < 0).toList();
-                        acc.remove(matchingKey).forEach(f -> f.complete(found));
-                    }
-                    if (acc.isEmpty()) {
-                        return null;
+                    if (!matchingKeys.isEmpty()) {
+                        for (var matchingKey : matchingKeys) {
+                            var found = elements.stream().filter(i -> matchingKey.compareTo(i.key()) < 0).toList();
+                            acc.remove(matchingKey).forEach(waiter -> {
+                                waiter.completed = true;
+                                waiter.onValue.accept(found);
+                            });
+                        }
+                        if (acc.isEmpty()) {
+                            return null;
+                        }
                     }
                     return acc;
                 });
@@ -152,5 +170,16 @@ final class Streams {
             }
             return existing;
         });
+    }
+
+    private static final class Waiter<T> {
+        final Consumer<T> onValue;
+        final Runnable onTimeout;
+        boolean completed;
+
+        Waiter(Consumer<T> onValue, Runnable onTimeout) {
+            this.onValue = onValue;
+            this.onTimeout = onTimeout;
+        }
     }
 }

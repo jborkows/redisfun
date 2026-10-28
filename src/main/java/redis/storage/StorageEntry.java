@@ -5,7 +5,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
-record StorageEntry(@NonNull StorageEntryKey key, @NonNull List<Tuple> tuples) {
+public record StorageEntry(@NonNull StorageEntryKey key, @NonNull List<Tuple> tuples) {
 
     private static final String SPECIAL_ID = "*";
 
