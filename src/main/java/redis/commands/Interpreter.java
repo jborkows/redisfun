@@ -78,6 +78,7 @@ public final class Interpreter implements AutoCloseable {
                 case XAdd.NAME -> XAdd.execute(command.args(), context);
                 case XRange.NAME -> XRange.execute(command.args(), context);
                 case XRead.NAME -> XRead.execute(command.args(), context);
+                case Info.NAME -> Info.execute(command.args(), context);
                 default ->
                         channel.accept(Messages.errorMessage("Unknown command '%s'".formatted(command.commandName())));
             }
