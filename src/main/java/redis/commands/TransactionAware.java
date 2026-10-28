@@ -80,14 +80,18 @@ class TransactionAware {
                 if (!command.args().isEmpty()) {
                     consumer.accept(Messages.wrongNumberOfArguments(command.name()));
                 } else {
-                    state.watchers.forEach(storage::deregisterWatcher);
-                    state.watched.clear();
-                    state.watchers.clear();
+                    clearWatchers(state);
                     consumer.accept(Messages.ok());
                 }
             }
             default -> processor.accept(command, consumer);
         }
+    }
+
+    private void clearWatchers(ConnectionState state) {
+        state.watchers.forEach(storage::deregisterWatcher);
+        state.watched.clear();
+        state.watchers.clear();
     }
 
     private void insideTransaction(Command command, EffectChannel consumer, ConnectionState state) {
@@ -127,6 +131,7 @@ class TransactionAware {
                 } else {
                     state.commandQueue.clear();
                     state.transactionInProgress = false;
+                    clearWatchers(state);
                     consumer.accept(Messages.ok());
                 }
             }
