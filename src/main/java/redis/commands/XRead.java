@@ -32,7 +32,7 @@ public final class XRead {
 
     private static void readStreams(List<String> args, CommandContext context) {
         try {
-            var entries = readSequential(args, 1, context.storage()::readStreamFrom, context);
+            var entries = readSequential(args, 1, context.storage()::readStreamFrom);
             context.channel().accept(arrayResponse(entries));
         } catch (CommandFailedException e) {
             context.channel().accept(e.effect);
@@ -53,7 +53,7 @@ public final class XRead {
 
                 var entries = new ArrayList<StreamEntry>(arraySeparation);
                 try {
-                    entries.addAll(readSequential(args, 3, context.storage()::readStreamFrom, context));
+                    entries.addAll(readSequential(args, 3, context.storage()::readStreamFrom));
                 } catch (CommandFailedException e) {
                     context.channel().accept(e.effect);
                     return;
@@ -72,6 +72,7 @@ public final class XRead {
                     context.storage().blockingReadStreamFrom(
                             new Key(key),
                             id,
+                            context.channel(),
                             result -> {
                                 if (completed[0]) {
                                     return;
@@ -102,7 +103,7 @@ public final class XRead {
         }
     }
 
-    private static List<StreamEntry> readSequential(List<String> args, int keyIdsOffset, StreamReader reader, CommandContext context) {
+    private static List<StreamEntry> readSequential(List<String> args, int keyIdsOffset, StreamReader reader) {
         var keyIdsPairs = args.subList(keyIdsOffset, args.size());
         if (keyIdsPairs.isEmpty() || keyIdsPairs.size() % 2 == 1) {
             throw new CommandFailedException(Messages.wrongNumberOfArguments(NAME));

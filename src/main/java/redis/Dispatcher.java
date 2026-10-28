@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 class Dispatcher implements AutoCloseable {
@@ -22,8 +23,10 @@ class Dispatcher implements AutoCloseable {
         this.interpreter = new Interpreter();
     }
 
-    ConnectionContext newConnection() {
-        return new ConnectionContext();
+    ConnectionHandle openConnection() {
+        var context = new ConnectionContext();
+        context.addCloseHook(() -> interpreter.onConnectionClosed(context.channel()));
+        return new ConnectionHandle(this, context);
     }
 
     void process(byte[] input, int read, ConnectionContext context) {
@@ -73,11 +76,19 @@ class Dispatcher implements AutoCloseable {
         return tokens;
     }
 
-    static final class ConnectionContext {
+    record ConnectionHandle(Dispatcher dispatcher, ConnectionContext context) implements AutoCloseable {
+        @Override
+        public void close() {
+            context.close();
+        }
+    }
+
+    static final class ConnectionContext implements AutoCloseable {
         private OutputStream outputStream;
         private Lexer lexer = new Lexer();
         private Parser parser = new Parser();
         private final BlockingQueue<Effect> queue = new LinkedBlockingQueue<>();
+        private final List<Runnable> closeHooks = new ArrayList<>();
         private final EffectChannel channel = effect -> {
             if (!queue.offer(effect)) {
                 throw new IllegalStateException("Effect queue is full");
@@ -86,6 +97,25 @@ class Dispatcher implements AutoCloseable {
 
         void bind(OutputStream outputStream) {
             this.outputStream = outputStream;
+        }
+
+        EffectChannel channel() {
+            return channel;
+        }
+
+        void addCloseHook(Runnable hook) {
+            closeHooks.add(hook);
+        }
+
+        @Override
+        public void close() {
+            for (var hook : closeHooks) {
+                try {
+                    hook.run();
+                } catch (Exception e) {
+                    logger.log(Level.SEVERE, "Connection close hook failed", e);
+                }
+            }
         }
     }
 

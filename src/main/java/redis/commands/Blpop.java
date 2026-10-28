@@ -31,6 +31,7 @@ public final class Blpop {
             int milliseconds = (int) Math.round(howManySecondsToWait * 1000);
             context.storage().blockingPop(
                     key,
+                    context.channel(),
                     value -> {
                         LOGGER.info(() -> "Blocking pop operation for " + keyString + " finished");
                         context.channel().accept(Messages.bulkMessages(List.of(keyString, value)));

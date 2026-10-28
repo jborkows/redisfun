@@ -90,6 +90,13 @@ public final class Interpreter implements AutoCloseable {
         executor.submit(() -> transactionAware.apply(command, consumer));
     }
 
+    public void onConnectionClosed(EffectChannel channel) {
+        executor.submit(() -> {
+            transactionAware.closeConnection(channel);
+            storage.closeConnection(channel);
+        });
+    }
+
     @Override
     public void close() {
         transactionAware.close();

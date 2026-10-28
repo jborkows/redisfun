@@ -2,6 +2,7 @@ package redis.storage;
 
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
+import redis.commands.EffectChannel;
 import redis.commands.Scheduler;
 import redis.storage.StorageException.StreamOperationsException;
 import redis.storage.StorageException.StreamOperationsException.OperationAllowedOnlyForStreams;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -87,7 +89,7 @@ final class Streams {
         return snapshot.stream().filter(predicate).toList();
     }
 
-    void blockingRead(Key key, String id, Consumer<List<Entry>> onValue, Runnable onTimeout,
+    void blockingRead(Key key, String id, EffectChannel channel, Consumer<List<Entry>> onValue, Runnable onTimeout,
                       Scheduler scheduler, long timeoutMs) {
         var existing = storage.lookup(key);
         if (existing != null && !(existing instanceof StreamValue)) {
@@ -101,7 +103,7 @@ final class Streams {
         } else {
             startKey = StorageEntryKey.parse(id);
         }
-        Waiter<List<StorageEntry>> waiter = new Waiter<>(entries -> onValue.accept(Storage.intoEntries(entries)), onTimeout);
+        Waiter<List<StorageEntry>> waiter = new Waiter<>(channel, entries -> onValue.accept(Storage.intoEntries(entries)), onTimeout);
         pops.compute(key, (_, acc) -> {
             if (acc == null) {
                 acc = new HashMap<>();
@@ -172,12 +174,42 @@ final class Streams {
         });
     }
 
+    void closeConnection(@NonNull EffectChannel channel) {
+        var keysToRemove = new ArrayList<Key>();
+        pops.forEach((key, awaiting) -> {
+            var changed = false;
+            for (var entry : awaiting.entrySet()) {
+                var waiters = entry.getValue();
+                waiters.removeIf(waiter -> {
+                    if (waiter.channel == channel) {
+                        waiter.completed = true;
+                        return true;
+                    }
+                    return false;
+                });
+                if (waiters.isEmpty()) {
+                    entry.setValue(null);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                awaiting.values().removeIf(Objects::isNull);
+            }
+            if (awaiting.isEmpty()) {
+                keysToRemove.add(key);
+            }
+        });
+        keysToRemove.forEach(pops::remove);
+    }
+
     private static final class Waiter<T> {
+        final EffectChannel channel;
         final Consumer<T> onValue;
         final Runnable onTimeout;
         boolean completed;
 
-        Waiter(Consumer<T> onValue, Runnable onTimeout) {
+        Waiter(EffectChannel channel, Consumer<T> onValue, Runnable onTimeout) {
+            this.channel = channel;
             this.onValue = onValue;
             this.onTimeout = onTimeout;
         }

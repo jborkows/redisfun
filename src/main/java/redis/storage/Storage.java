@@ -3,6 +3,7 @@ package redis.storage;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
+import redis.commands.EffectChannel;
 import redis.commands.Scheduler;
 import redis.storage.DataPersistency.Eternal;
 import redis.storage.DataPersistency.ExpiredAt;
@@ -140,9 +141,9 @@ public final class Storage {
         return modification(key, () -> lists.pop(key, howMany));
     }
 
-    public void blockingPop(@NonNull Key key, @NonNull Consumer<String> onValue,
+    public void blockingPop(@NonNull Key key, @NonNull EffectChannel channel, @NonNull Consumer<String> onValue,
                             @NonNull Runnable onTimeout, @NonNull Scheduler scheduler, long timeoutMs) {
-        lists.blockingPop(key, onValue, onTimeout, scheduler, timeoutMs);
+        lists.blockingPop(key, channel, onValue, onTimeout, scheduler, timeoutMs);
     }
 
     @NonNull
@@ -162,10 +163,15 @@ public final class Storage {
         return intoEntries(found);
     }
 
-    public void blockingReadStreamFrom(@NonNull Key key, @NonNull String id,
+    public void blockingReadStreamFrom(@NonNull Key key, @NonNull String id, @NonNull EffectChannel channel,
                                        @NonNull Consumer<List<Entry>> onValue,
                                        @NonNull Runnable onTimeout, @NonNull Scheduler scheduler, long timeoutMs) {
-        streams.blockingRead(key, id, onValue, onTimeout, scheduler, timeoutMs);
+        streams.blockingRead(key, id, channel, onValue, onTimeout, scheduler, timeoutMs);
+    }
+
+    public void closeConnection(@NonNull EffectChannel channel) {
+        lists.closeConnection(channel);
+        streams.closeConnection(channel);
     }
 
     @NullMarked

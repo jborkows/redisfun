@@ -2,6 +2,7 @@ package redis.storage;
 
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import redis.commands.EffectChannel;
 import redis.commands.Scheduler;
 import redis.storage.DataPersistency.Eternal;
 import redis.storage.StorageException.CannotModifyType;
@@ -138,9 +139,9 @@ final class Lists {
         return reference.value;
     }
 
-    void blockingPop(@NonNull Key key, @NonNull Consumer<String> onValue, @NonNull Runnable onTimeout,
-                     @NonNull Scheduler scheduler, long timeoutMs) {
-        var waiter = new Waiter<>(onValue, onTimeout);
+    void blockingPop(@NonNull Key key, @NonNull EffectChannel channel, @NonNull Consumer<String> onValue,
+                     @NonNull Runnable onTimeout, @NonNull Scheduler scheduler, long timeoutMs) {
+        var waiter = new Waiter<>(channel, onValue, onTimeout);
         pops.compute(key, (_, acc) -> {
             if (acc == null) {
                 acc = new ArrayList<>();
@@ -198,12 +199,33 @@ final class Lists {
         });
     }
 
+    void closeConnection(@NonNull EffectChannel channel) {
+        var keysToRemove = new ArrayList<Key>();
+        for (var entry : pops.entrySet()) {
+            var key = entry.getKey();
+            var waiters = entry.getValue();
+            waiters.removeIf(waiter -> {
+                if (waiter.channel == channel) {
+                    waiter.completed = true;
+                    return true;
+                }
+                return false;
+            });
+            if (waiters.isEmpty()) {
+                keysToRemove.add(key);
+            }
+        }
+        keysToRemove.forEach(pops::remove);
+    }
+
     private static final class Waiter<T> {
+        final EffectChannel channel;
         final Consumer<T> onValue;
         final Runnable onTimeout;
         boolean completed;
 
-        Waiter(Consumer<T> onValue, Runnable onTimeout) {
+        Waiter(EffectChannel channel, Consumer<T> onValue, Runnable onTimeout) {
+            this.channel = channel;
             this.onValue = onValue;
             this.onTimeout = onTimeout;
         }

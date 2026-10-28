@@ -118,6 +118,13 @@ class TransactionAware {
         return changed;
     }
 
+    void closeConnection(EffectChannel consumer) {
+        var state = connections.remove(consumer);
+        if (state != null) {
+            state.watchers.forEach(storage::deregisterWatcher);
+        }
+    }
+
     void close() {
         connections.values().forEach(state -> {
             state.commandQueue.clear();
