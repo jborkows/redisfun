@@ -1,5 +1,7 @@
 package redis.commands;
 
+import redis.InterpreterRunner;
+import redis.ServerKind;
 import redis.protocol.Command;
 import redis.storage.Key;
 import redis.storage.Storage;
@@ -9,7 +11,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiConsumer;
 
 class TransactionAware {
     private static final String EXEC_COMMAND = "EXEC";
@@ -19,24 +20,24 @@ class TransactionAware {
     private static final String UNWATCH_COMMAND = "UNWATCH";
 
     private final Storage storage;
-    private final BiConsumer<Command, EffectChannel> processor;
+    private final InterpreterRunner processor;
     private final Map<EffectChannel, ConnectionState> connections = new HashMap<>();
 
-    TransactionAware(Storage storage, BiConsumer<Command, EffectChannel> processor) {
+    TransactionAware(Storage storage, InterpreterRunner processor) {
         this.storage = storage;
         this.processor = processor;
     }
 
-    void apply(Command command, EffectChannel consumer) {
+    void apply(Command command, EffectChannel consumer, ServerKind serverKind) {
         var state = connections.computeIfAbsent(consumer, _ -> new ConnectionState());
         if (!state.transactionInProgress) {
-            noTransaction(command, consumer, state);
+            noTransaction(command, consumer, state, serverKind);
         } else {
-            insideTransaction(command, consumer, state);
+            insideTransaction(command, consumer, state, serverKind);
         }
     }
 
-    private void noTransaction(Command command, EffectChannel consumer, ConnectionState state) {
+    private void noTransaction(Command command, EffectChannel consumer, ConnectionState state, ServerKind serverKind) {
         switch (command.commandName()) {
             case MULTI_COMMAND -> {
                 if (!command.args().isEmpty()) {
@@ -84,7 +85,7 @@ class TransactionAware {
                     consumer.accept(Messages.ok());
                 }
             }
-            default -> processor.accept(command, consumer);
+            default -> processor.accept(command, consumer, serverKind);
         }
     }
 
@@ -94,7 +95,7 @@ class TransactionAware {
         state.watchers.clear();
     }
 
-    private void insideTransaction(Command command, EffectChannel consumer, ConnectionState state) {
+    private void insideTransaction(Command command, EffectChannel consumer, ConnectionState state, ServerKind serverKind) {
         switch (command.commandName()) {
             case WATCH_COMMAND -> {
                 if (command.args().isEmpty()) {
@@ -119,7 +120,7 @@ class TransactionAware {
                 } else {
                     var messages = new ArrayList<Effect>();
                     for (var queuedCommand : state.commandQueue) {
-                        processor.accept(queuedCommand, messages::add);
+                        processor.accept(queuedCommand, messages::add, serverKind);
                     }
                     state.transactionInProgress = false;
                     consumer.accept(Messages.array(messages));

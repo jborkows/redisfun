@@ -1,6 +1,7 @@
 package redis.commands;
 
 import org.junit.jupiter.api.Test;
+import redis.ServerKind;
 import redis.protocol.Command;
 
 import java.util.List;
@@ -19,7 +20,7 @@ class InterpreterTest {
         interpreter.apply(command, e -> {
             effect.set(e);
             latch.countDown();
-        });
+        }, new ServerKind.Master());
         try {
             latch.await();
         } catch (InterruptedException e) {

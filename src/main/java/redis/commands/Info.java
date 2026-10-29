@@ -1,5 +1,7 @@
 package redis.commands;
 
+import redis.ServerKind;
+
 import java.util.List;
 
 public final class Info {
@@ -18,6 +20,11 @@ public final class Info {
             context.channel().accept(Messages.bulkMessage(""));
             return;
         }
-        context.channel().accept(Messages.bulkMessage("role:master"));
+
+        var message = switch (context.serverKind()) {
+            case ServerKind.Master _ -> "role:master";
+            case ServerKind.Slave _ -> "role:slave";
+        };
+        context.send(Messages.bulkMessage(message));
     }
 }

@@ -1,5 +1,6 @@
 package redis.commands;
 
+import redis.ServerKind;
 import redis.protocol.Command;
 import redis.storage.Key;
 import redis.storage.Storage;
@@ -59,8 +60,8 @@ public final class Interpreter implements AutoCloseable {
         return Messages.bulkMessage(value);
     }
 
-    private void react(Command command, EffectChannel channel) {
-        var context = new CommandContext(storage, scheduler, channel);
+    private void react(Command command, EffectChannel channel, ServerKind serverKind) {
+        var context = new CommandContext(storage, scheduler, channel, serverKind);
         try {
             switch (command.commandName()) {
                 case "PING" -> channel.accept(Messages.simpleMessage("PONG"));
@@ -87,8 +88,8 @@ public final class Interpreter implements AutoCloseable {
         }
     }
 
-    public void apply(Command command, EffectChannel consumer) {
-        executor.submit(() -> transactionAware.apply(command, consumer));
+    public void apply(Command command, EffectChannel consumer, ServerKind serverKind) {
+        executor.submit(() -> transactionAware.apply(command, consumer, serverKind));
     }
 
     public void onConnectionClosed(EffectChannel channel) {

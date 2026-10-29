@@ -33,7 +33,7 @@ class Dispatcher implements AutoCloseable {
         logger.fine(() -> "Received: " + new String(input, 0, read));
         var commands = parseTokens(extractTokens(input, read, context), context);
         for (var command : commands) {
-            interpreter.apply(command, context.channel);
+            interpreter.apply(command, context.channel, context.serverKind);
             try {
                 var effect = context.queue.take();
                 context.outputStream.write(effect.text().getBytes(StandardCharsets.ISO_8859_1));
@@ -89,14 +89,20 @@ class Dispatcher implements AutoCloseable {
         private Parser parser = new Parser();
         private final BlockingQueue<Effect> queue = new LinkedBlockingQueue<>();
         private final List<Runnable> closeHooks = new ArrayList<>();
+
         private final EffectChannel channel = effect -> {
             if (!queue.offer(effect)) {
                 throw new IllegalStateException("Effect queue is full");
             }
         };
+        ServerKind serverKind;
 
         void bind(OutputStream outputStream) {
             this.outputStream = outputStream;
+        }
+
+        void bind(ServerKind serverKind) {
+            this.serverKind = serverKind;
         }
 
         EffectChannel channel() {
@@ -124,3 +130,4 @@ class Dispatcher implements AutoCloseable {
         interpreter.close();
     }
 }
+

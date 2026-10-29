@@ -1,5 +1,6 @@
 package redis;
 
+import org.jspecify.annotations.Nullable;
 import redis.commands.Effect;
 
 import java.io.IOException;
@@ -19,9 +20,13 @@ public final class RedisServer implements AutoCloseable {
     private Thread acceptThread;
     private volatile boolean running;
 
+    @Nullable
+    private final Location replicaFor;
+
     public RedisServer(Config config) {
         this.requestedPort = config.port;
         this.clientSlots = new Semaphore(config.maxConnections);
+        this.replicaFor = config.replicaFor;
     }
 
     /**
@@ -34,6 +39,14 @@ public final class RedisServer implements AutoCloseable {
 
     public static ConfigChanger portChanger(int port) {
         return new ConfigChanger.PortChanger(port);
+    }
+
+    public static ConfigChanger randomPort() {
+        return new ConfigChanger.PortChanger(0);
+    }
+
+    public static ConfigChanger replicaOf(String address, int port) {
+        return new ConfigChanger.ReplicaFor(address, port);
     }
 
     public static ConfigChanger maxConnectionsChanger(int maxConnections) {
@@ -132,6 +145,7 @@ public final class RedisServer implements AutoCloseable {
         try (clientSocket; var handle = dispatcher.openConnection()) {
             var context = handle.context();
             context.bind(clientSocket.getOutputStream());
+            context.bind(replicaFor != null? new ServerKind.Slave(replicaFor) : new ServerKind.Master());
             while ((bytesRead = clientSocket.getInputStream().read(buffer)) != -1) {
                 dispatcher.process(buffer, bytesRead, context);
             }
@@ -172,6 +186,13 @@ public final class RedisServer implements AutoCloseable {
                 config.maxConnections = maxConnections;
             }
         }
+
+        record ReplicaFor(String address, int port) implements ConfigChanger {
+            @Override
+            public void modify(Config config) {
+                config.replicaFor = new Location(address, port);
+            }
+        }
     }
 
     public static class Config {
@@ -179,6 +200,9 @@ public final class RedisServer implements AutoCloseable {
         int port;
 
         int maxConnections;
+
+        @Nullable
+        Location replicaFor;
 
         public Config(ConfigChanger... changes) {
             port = 0;
@@ -188,4 +212,8 @@ public final class RedisServer implements AutoCloseable {
             }
         }
     }
+}
+
+
+record Location(String address, int port) {
 }

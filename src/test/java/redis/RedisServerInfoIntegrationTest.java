@@ -22,6 +22,12 @@ class RedisServerInfoIntegrationTest {
     }
 
     @Test
+    void infoWithoutArgumentsShouldReturnForSlave() {
+        var response = SharedRedisServer.runForSingleSlave(() -> SharedRedisServer.run("INFO"));
+        assertEquals(List.of("$10", "role:slave"), response);
+    }
+
+    @Test
     void infoWithTooManyArgumentsRespondsWithError() throws IOException {
         var response = SharedRedisServer.run("INFO replication extra");
         assertEquals(List.of("-ERR wrong number of arguments for 'INFO' command"), response);

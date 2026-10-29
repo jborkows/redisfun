@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 final class CliParser {
+    private final static Pattern SPACE_PATTERN = Pattern.compile("\\s+");
 
     private CliParser() {
     }
@@ -36,7 +38,22 @@ final class CliParser {
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException("Invalid port number");
             }
-        });
+        }),
+        REPLICA_FOR(1, "--replicaof", ((args, offset) -> {
+            if (args.length <= offset) {
+                throw new IllegalArgumentException("Missing replica info");
+            }
+            var location = args[offset];
+            try {
+                var parts = SPACE_PATTERN.split(location, -1);
+                if (parts.length != 2) {
+                    throw new IllegalArgumentException("Invalid replica info");
+                }
+                return RedisServer.replicaOf(parts[0], Integer.parseInt(parts[1]));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid port number");
+            }
+        }));
 
         private static final Map<String, Option> options = Arrays.stream(Option.values())
                 .collect(Collectors.toUnmodifiableMap(i -> i.option, i -> i));

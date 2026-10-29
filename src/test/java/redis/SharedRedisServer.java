@@ -14,6 +14,9 @@ import java.util.concurrent.Semaphore;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static redis.RedisServer.randomPort;
+import static redis.RedisServer.replicaOf;
+
 /**
  * Single Redis server instance shared by every integration test class in this
  * directory. The server is started lazily on first use and stopped by a JVM
@@ -22,8 +25,10 @@ import java.util.logging.Logger;
  */
 final class SharedRedisServer {
 
+    final static ScopedValue<Integer> portNumber = ScopedValue.newInstance();
     private static final Logger LOGGER = Logger.getLogger(SharedRedisServer.class.getName());
     private static final Semaphore MAX_CONCURRENT_SOCKETS = new Semaphore(50);
+    private static final List<RedisServer> slaves = new ArrayList<>();
     private static RedisServer server;
 
     private SharedRedisServer() {
@@ -37,23 +42,48 @@ final class SharedRedisServer {
      * tests ever operate on the same key.
      */
     static String key(TestInfo testInfo) {
-        return testInfo.getTestClass().orElseThrow().getSimpleName()
-                + "." + testInfo.getTestMethod().orElseThrow().getName();
+        return testInfo.getTestClass().orElseThrow().getSimpleName() + "." + testInfo.getTestMethod().orElseThrow().getName();
     }
 
     static synchronized int port() {
         if (server == null) {
-            Logging.configureFromSystemProperty();
-            // Random free port, never the application default (6379)
-            server = RedisServer.onRandomPort();
-            try {
-                server.start();
-            } catch (IOException e) {
-                throw new IllegalStateException("Failed to start the shared Redis server", e);
-            }
-            Runtime.getRuntime().addShutdownHook(new Thread(SharedRedisServer::stopQuietly, "shared-redis-server-shutdown"));
+            server = redisServer(randomPort());
         }
         return server.getPort();
+    }
+
+    private static synchronized RedisServer redisServer(RedisServer.ConfigChanger... configChanger) {
+        Logging.configureFromSystemProperty();
+        var server = RedisServer.redisServer(configChanger);
+        try {
+            server.start();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to start the shared Redis server", e);
+        }
+        Runtime.getRuntime().addShutdownHook(new Thread(SharedRedisServer::stopQuietly, "shared-redis-server-shutdown"));
+        return server;
+    }
+
+    static synchronized int singleSlaveScenarios() {
+        if (slaves.isEmpty()) {
+            slaves.add(
+                    redisServer(
+                            randomPort(),
+                            replicaOf("localhost", port())
+                    )
+            );
+        }
+        return slaves.getFirst().getPort();
+    }
+
+    static List<String> runForSingleSlave(SlaveAction supplier) {
+        return ScopedValue.where(portNumber, singleSlaveScenarios()).call(() -> {
+            try {
+                return supplier.run();
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to run the shared Redis server", e);
+            }
+        });
     }
 
     private static void stopQuietly() {
@@ -62,28 +92,6 @@ final class SharedRedisServer {
         } catch (IOException ignored) {
             // shutting down anyway
         }
-    }
-
-    /**
-     * Describes a single logical command sent over a Redis connection.
-     * Implementations decide whether the command is written immediately or
-     * after a caller-supplied action has completed, which is useful for
-     * orchestrating timing across connections (e.g. transactions with
-     * interleaved blocking operations).
-     */
-    sealed interface CommandInput permits DirectCall, WaitableCommand {
-        List<String> lines();
-    }
-
-    record DirectCall(List<String> lines) implements CommandInput {
-    }
-
-    record WaitableCommand(List<String> lines, InterruptibleAction beforeSend) implements CommandInput {
-    }
-
-    @FunctionalInterface
-    interface InterruptibleAction {
-        void run() throws InterruptedException;
     }
 
     /**
@@ -124,9 +132,7 @@ final class SharedRedisServer {
      * connection-scoped state such as transactions (MULTI/EXEC/DISCARD).
      */
     static List<String> runOnSameConnection(String... commands) throws IOException {
-        return runOnSameConnection(Arrays.stream(commands)
-                .map(SharedRedisServer::Immediately)
-                .toArray(CommandInput[]::new));
+        return runOnSameConnection(Arrays.stream(commands).map(SharedRedisServer::Immediately).toArray(CommandInput[]::new));
     }
 
     static List<String> runOnSameConnection(CommandInput... commands) throws IOException {
@@ -144,15 +150,14 @@ final class SharedRedisServer {
     }
 
     static List<String> sendCommand(String... command) throws IOException {
-        return sendInputs(Arrays.stream(command)
-                .map(line -> new DirectCall(List.of(line)))
-                .toArray(CommandInput[]::new));
+        return sendInputs(Arrays.stream(command).map(line -> new DirectCall(List.of(line))).toArray(CommandInput[]::new));
     }
 
     private static List<String> sendInputs(CommandInput... commands) throws IOException {
         try {
             MAX_CONCURRENT_SOCKETS.acquire();
-            try (var socket = new Socket("localhost", port())) {
+            var serverPort = portNumber.isBound() ? portNumber.get() : port();
+            try (var socket = new Socket("localhost", serverPort)) {
                 // Bound the blocking read so a short/incomplete response fails the test
                 // instead of freezing it (readLine() can never be unblocked otherwise).
                 socket.setSoTimeout(SocketTimeout.timeoutMs());
@@ -208,5 +213,31 @@ final class SharedRedisServer {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
+    }
+
+    interface SlaveAction {
+        List<String> run() throws Exception;
+    }
+
+    /**
+     * Describes a single logical command sent over a Redis connection.
+     * Implementations decide whether the command is written immediately or
+     * after a caller-supplied action has completed, which is useful for
+     * orchestrating timing across connections (e.g. transactions with
+     * interleaved blocking operations).
+     */
+    sealed interface CommandInput permits DirectCall, WaitableCommand {
+        List<String> lines();
+    }
+
+    @FunctionalInterface
+    interface InterruptibleAction {
+        void run() throws InterruptedException;
+    }
+
+    record DirectCall(List<String> lines) implements CommandInput {
+    }
+
+    record WaitableCommand(List<String> lines, InterruptibleAction beforeSend) implements CommandInput {
     }
 }
