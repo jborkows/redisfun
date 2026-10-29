@@ -142,10 +142,10 @@ public final class RedisServer implements AutoCloseable {
     private void handleClient(Socket clientSocket) {
         var buffer = new byte[1024];
         int bytesRead;
-        try (clientSocket; var handle = dispatcher.openConnection()) {
+        var serverKind = replicaFor != null ? new ServerKind.Slave(replicaFor) : new ServerKind.Master();
+        try (clientSocket; var handle = dispatcher.openConnection(serverKind)) {
             var context = handle.context();
             context.bind(clientSocket.getOutputStream());
-            context.bind(replicaFor != null? new ServerKind.Slave(replicaFor) : new ServerKind.Master());
             while ((bytesRead = clientSocket.getInputStream().read(buffer)) != -1) {
                 dispatcher.process(buffer, bytesRead, context);
             }
@@ -214,6 +214,3 @@ public final class RedisServer implements AutoCloseable {
     }
 }
 
-
-record Location(String address, int port) {
-}

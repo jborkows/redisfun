@@ -47,27 +47,27 @@ final class SharedRedisServer {
 
     static synchronized int port() {
         if (server == null) {
-            server = redisServer(randomPort());
+            server = startServer(randomPort());
         }
         return server.getPort();
     }
 
-    private static synchronized RedisServer redisServer(RedisServer.ConfigChanger... configChanger) {
+    private static synchronized RedisServer startServer(RedisServer.ConfigChanger... configChangers) {
         Logging.configureFromSystemProperty();
-        var server = RedisServer.redisServer(configChanger);
+        var startedServer = RedisServer.redisServer(configChangers);
         try {
-            server.start();
+            startedServer.start();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to start the shared Redis server", e);
         }
         Runtime.getRuntime().addShutdownHook(new Thread(SharedRedisServer::stopQuietly, "shared-redis-server-shutdown"));
-        return server;
+        return startedServer;
     }
 
     static synchronized int singleSlaveScenarios() {
         if (slaves.isEmpty()) {
             slaves.add(
-                    redisServer(
+                    startServer(
                             randomPort(),
                             replicaOf("localhost", port())
                     )
@@ -88,9 +88,18 @@ final class SharedRedisServer {
 
     private static void stopQuietly() {
         try {
-            server.close();
+            if (server != null) {
+                server.close();
+            }
         } catch (IOException ignored) {
             // shutting down anyway
+        }
+        for (var slave : slaves) {
+            try {
+                slave.close();
+            } catch (IOException ignored) {
+                // shutting down anyway
+            }
         }
     }
 

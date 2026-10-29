@@ -23,8 +23,8 @@ class Dispatcher implements AutoCloseable {
         this.interpreter = new Interpreter();
     }
 
-    ConnectionHandle openConnection() {
-        var context = new ConnectionContext();
+    ConnectionHandle openConnection(ServerKind serverKind) {
+        var context = new ConnectionContext(serverKind);
         context.addCloseHook(() -> interpreter.onConnectionClosed(context.channel()));
         return new ConnectionHandle(this, context);
     }
@@ -89,20 +89,20 @@ class Dispatcher implements AutoCloseable {
         private Parser parser = new Parser();
         private final BlockingQueue<Effect> queue = new LinkedBlockingQueue<>();
         private final List<Runnable> closeHooks = new ArrayList<>();
+        private final ServerKind serverKind;
 
         private final EffectChannel channel = effect -> {
             if (!queue.offer(effect)) {
                 throw new IllegalStateException("Effect queue is full");
             }
         };
-        ServerKind serverKind;
+
+        ConnectionContext(ServerKind serverKind) {
+            this.serverKind = serverKind;
+        }
 
         void bind(OutputStream outputStream) {
             this.outputStream = outputStream;
-        }
-
-        void bind(ServerKind serverKind) {
-            this.serverKind = serverKind;
         }
 
         EffectChannel channel() {
@@ -130,4 +130,3 @@ class Dispatcher implements AutoCloseable {
         interpreter.close();
     }
 }
-

@@ -2,9 +2,7 @@ package redis;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class CliParserTest {
 
@@ -49,6 +47,47 @@ class CliParserTest {
         var exception = assertThrows(
                 IllegalArgumentException.class,
                 () -> CliParser.parse(new String[]{"--port", "not-a-number"})
+        );
+
+        assertEquals("Invalid port number", exception.getMessage());
+    }
+
+    @Test
+    void parsesReplicaOfOption() {
+        var changers = CliParser.parse(new String[]{"--replicaof", "localhost 6379"});
+
+        assertEquals(1, changers.size());
+        var config = new RedisServer.Config(changers.toArray(new RedisServer.ConfigChanger[0]));
+        assertNotNull(config.replicaFor);
+        assertEquals("localhost", config.replicaFor.address());
+        assertEquals(6379, config.replicaFor.port());
+    }
+
+    @Test
+    void rejectsMissingReplicaOfValue() {
+        var exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> CliParser.parse(new String[]{"--replicaof"})
+        );
+
+        assertEquals("Missing replica info", exception.getMessage());
+    }
+
+    @Test
+    void rejectsInvalidReplicaOfFormat() {
+        var exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> CliParser.parse(new String[]{"--replicaof", "localhost"})
+        );
+
+        assertEquals("Invalid replica info", exception.getMessage());
+    }
+
+    @Test
+    void rejectsInvalidReplicaOfPort() {
+        var exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> CliParser.parse(new String[]{"--replicaof", "localhost not-a-number"})
         );
 
         assertEquals("Invalid port number", exception.getMessage());
