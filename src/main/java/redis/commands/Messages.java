@@ -23,6 +23,10 @@ final class Messages {
         return new Effect.BulkString(message);
     }
 
+    static Effect longBulkMessage(String... lines) {
+        return new Effect.MultiLineBulkString(lines);
+    }
+
     static Effect bulkMessages(List<String> messages) {
         return new Effect.Array(messages.stream().<Effect>map(Effect.BulkString::new).toList());
     }

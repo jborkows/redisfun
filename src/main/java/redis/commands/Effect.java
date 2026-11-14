@@ -43,6 +43,22 @@ public sealed interface Effect {
         }
     }
 
+    record MultiLineBulkString(List<String> lines) implements Effect {
+        public MultiLineBulkString {
+            lines = List.copyOf(lines);
+        }
+
+        public MultiLineBulkString(String... lines) {
+            this(List.of(lines));
+        }
+
+        @Override
+        public String text() {
+            var payload = String.join(CRLF, lines);
+            return "$" + payload.length() + CRLF + payload + CRLF;
+        }
+    }
+
     record NullBulk() implements Effect {
         @Override
         public String text() {

@@ -102,6 +102,17 @@ class InterpreterTest {
     }
 
     @Test
+    void encodesLongBulkStringAsSingleBulkStringWithMultipleLines() {
+        var effect = Messages.longBulkMessage(
+                "role:master",
+                "master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
+                "master_repl_offset:0"
+        );
+        var payload = "role:master\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0";
+        assertEquals("$" + payload.length() + "\r\n" + payload + "\r\n", effect.text());
+    }
+
+    @Test
     void encodesNestedArrays() {
         var effect = Messages.array(
                 Messages.array(new Effect.SimpleString("a")),

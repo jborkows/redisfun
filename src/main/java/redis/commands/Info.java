@@ -22,9 +22,10 @@ public final class Info {
         }
 
         var message = switch (context.serverKind()) {
-            case ServerKind.Master _ -> "role:master";
-            case ServerKind.Slave _ -> "role:slave";
+            case ServerKind.Master master ->
+                    Messages.longBulkMessage("role:master", "master_replid:" + master.masterReplicationId(), "master_repl_offset:" + master.masterReplicationOffset());
+            case ServerKind.Slave _ -> Messages.bulkMessage("role:slave");
         };
-        context.send(Messages.bulkMessage(message));
+        context.send(message);
     }
 }

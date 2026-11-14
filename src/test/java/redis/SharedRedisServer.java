@@ -76,6 +76,17 @@ final class SharedRedisServer {
         return slaves.getFirst().getPort();
     }
 
+    static void runOnSeparateMaster(SeparateMasterScenario runnable) {
+        var server = startServer(randomPort());
+        ScopedValue.where(portNumber, server.getPort()).run(() -> {
+            try {
+                runnable.run();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     static List<String> runForSingleSlave(SlaveAction supplier) {
         return ScopedValue.where(portNumber, singleSlaveScenarios()).call(() -> {
             try {
@@ -222,6 +233,10 @@ final class SharedRedisServer {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
+    }
+
+    interface SeparateMasterScenario {
+        void run() throws IOException;
     }
 
     interface SlaveAction {

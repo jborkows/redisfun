@@ -16,12 +16,11 @@ public final class RedisServer implements AutoCloseable {
     private final int requestedPort;
     private final Semaphore clientSlots;
     private final Dispatcher dispatcher = new Dispatcher();
+    @Nullable
+    private final Location replicaFor;
     private ServerSocket serverSocket;
     private Thread acceptThread;
     private volatile boolean running;
-
-    @Nullable
-    private final Location replicaFor;
 
     public RedisServer(Config config) {
         this.requestedPort = config.port;
@@ -142,7 +141,7 @@ public final class RedisServer implements AutoCloseable {
     private void handleClient(Socket clientSocket) {
         var buffer = new byte[1024];
         int bytesRead;
-        var serverKind = replicaFor != null ? new ServerKind.Slave(replicaFor) : new ServerKind.Master();
+        var serverKind = replicaFor != null ? new ServerKind.Slave(replicaFor) : new ServerKind.Master().withNewReplicationId();
         try (clientSocket; var handle = dispatcher.openConnection(serverKind)) {
             var context = handle.context();
             context.bind(clientSocket.getOutputStream());
